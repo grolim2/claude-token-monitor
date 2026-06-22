@@ -30,7 +30,12 @@ def _build_tooltip(api_usage: dict, window_info: dict, local_usage: dict) -> str
     if five_h:
         pct = five_h.get("utilization", 0)
         resets_at = five_h.get("resets_at", "")
-        time_str = resets_at[11:16] if len(resets_at) > 15 else "?"
+        try:
+            from datetime import datetime, timezone
+            dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+            time_str = dt.astimezone().strftime("%H:%M")
+        except Exception:
+            time_str = resets_at[11:16] if len(resets_at) > 15 else "?"
         return f"Claude (5h): {pct:.0f}% | encerra {time_str}"[:128]
     # fallback: custo local
     cost = local_usage.get("cost_usd", 0.0)

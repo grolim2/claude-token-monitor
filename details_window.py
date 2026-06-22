@@ -4,7 +4,7 @@ Popup window: usage details + live countdown (updates every second).
 
 import tkinter as tk
 from tkinter import ttk
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def _parse_dt(s: str):
@@ -31,17 +31,14 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     if five_h:
         pct = float(five_h.get("utilization", 0))
         window_end_dt = _parse_dt(five_h.get("resets_at", ""))
-        window_start_dt = (window_end_dt - __import__("datetime").timedelta(hours=5)
-                          ) if window_end_dt else None
+        window_start_dt = (window_end_dt - timedelta(hours=5)) if window_end_dt else None
         is_active = window_end_dt is not None
-        source = "API"
     else:
         is_active = window_info.get("is_active", False)
         window_end_dt   = _parse_dt(window_info.get("window_end", "")) if is_active else None
         window_start_dt = _parse_dt(window_info.get("window_start", "")) if is_active else None
         cost = usage.get("cost_usd", 0.0)
         pct = cost / limit_usd * 100 if limit_usd > 0 else 0
-        source = "local"
 
     cost = usage.get("cost_usd", 0.0)
 
@@ -55,8 +52,9 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
 
     if is_active and window_start_dt and window_end_dt:
         fmt = "%d/%m %H:%M:%S"
-        start_s = window_start_dt.astimezone().strftime(fmt)
-        end_s   = window_end_dt.astimezone().strftime(fmt)
+        local_tz = datetime.now().astimezone().tzinfo
+        start_s = window_start_dt.astimezone(local_tz).strftime(fmt)
+        end_s   = window_end_dt.astimezone(local_tz).strftime(fmt)
         ttk.Label(frame, text=f"Início:  {start_s}",
                   font=("Consolas", 9)).grid(row=2, column=0, columnspan=2, sticky="w", **pad)
         ttk.Label(frame, text=f"Término: {end_s}",
@@ -84,7 +82,14 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     bar.pack(side="left")
     ttk.Label(bar_frame, text=f"  {pct:.1f}%").pack(side="left")
 
-    ttk.Label(frame, text=f"Custo: ${cost:.4f} USD  /  limite: ${limit_usd:.2f} USD",
+    total_tokens = (
+        usage.get("input_tokens", 0) +
+        usage.get("output_tokens", 0) +
+        usage.get("cache_creation_5m", 0) +
+        usage.get("cache_creation_1h", 0) +
+        usage.get("cache_read_input_tokens", 0)
+    )
+    ttk.Label(frame, text=f"Total: {total_tokens:,} tokens  |  ${cost:.4f} USD",
               font=("Consolas", 9)).grid(row=8, column=0, columnspan=2, sticky="w", **pad)
 
     # ── Token breakdown ────────────────────────────────────────────────
