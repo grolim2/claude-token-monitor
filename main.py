@@ -37,14 +37,12 @@ def _build_tooltip(api_usage: dict, window_info: dict, local_usage: dict) -> str
         except Exception:
             time_str = resets_at[11:16] if len(resets_at) > 15 else "?"
         return f"Claude (5h): {pct:.0f}% | encerra {time_str}"[:128]
-    # fallback: custo local
-    cost = local_usage.get("cost_usd", 0.0)
-    limit = _config.get("cost_limit_usd", 8.0)
-    pct = cost / limit * 100 if limit > 0 else 0
+    # fallback: sem dado da API
     remaining = window_info.get("remaining_seconds", 0)
     h, r = divmod(int(remaining), 3600)
     m = r // 60
-    return f"Claude (5h): ~{pct:.0f}% ${cost:.3f} | {h}h{m:02d}m"[:128]
+    cost = local_usage.get("cost_usd", 0.0)
+    return f"Claude (5h): -- | encerra em {h}h{m:02d}m (${cost:.3f})"[:128]
 
 
 def _refresh():
@@ -64,9 +62,7 @@ def _refresh():
             if five_h:
                 pct = float(five_h.get("utilization", 0))
             else:
-                cost  = local_usage.get("cost_usd", 0.0)
-                limit = _config.get("cost_limit_usd", 8.0)
-                pct   = min(cost / limit * 100, 999.0) if limit > 0 else 0.0
+                pct = 0.0
 
             cost = local_usage.get("cost_usd", 0.0)
             icon_img = make_icon(pct, cost)
@@ -87,11 +83,10 @@ def _show_details(icon, item):
     api_usage   = dict(_last_api_usage)
     window_info = dict(_last_window_info)
     local_usage = dict(_last_local_usage)
-    limit_usd   = _config.get("cost_limit_usd", 8.0)
 
     threading.Thread(
         target=open_details,
-        args=(api_usage, window_info, local_usage, limit_usd),
+        args=(api_usage, window_info, local_usage, 0.0),
         daemon=True,
     ).start()
 
@@ -104,13 +99,10 @@ def _open_settings(icon, item):
         _stop_event.clear()
         threading.Thread(target=_refresh, daemon=True).start()
 
-    def get_current_cost():
-        return _last_local_usage.get("cost_usd")
-
     threading.Thread(
         target=open_settings,
         args=(_config,),
-        kwargs={"on_save": on_save, "get_current_cost": get_current_cost},
+        kwargs={"on_save": on_save},
         daemon=True,
     ).start()
 
