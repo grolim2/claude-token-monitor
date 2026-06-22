@@ -14,7 +14,7 @@ def _parse_dt(s: str):
         return None
 
 
-def open_details(window_info: dict, usage: dict, limit_usd: float):
+def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: float):
     win = tk.Tk()
     win.title("Claude Token Monitor")
     win.resizable(False, False)
@@ -24,12 +24,26 @@ def open_details(window_info: dict, usage: dict, limit_usd: float):
     frame = ttk.Frame(win, padding=14)
     frame.pack(fill="both", expand=True)
 
-    is_active = window_info.get("is_active", False)
-    window_end_dt = _parse_dt(window_info.get("window_end", "")) if is_active else None
-    window_start_dt = _parse_dt(window_info.get("window_start", "")) if is_active else None
+    # Prefer real API data; fall back to local window detection
+    five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
+    seven_d = api_usage.get("seven_day") if not api_usage.get("error") else None
+
+    if five_h:
+        pct = float(five_h.get("utilization", 0))
+        window_end_dt = _parse_dt(five_h.get("resets_at", ""))
+        window_start_dt = (window_end_dt - __import__("datetime").timedelta(hours=5)
+                          ) if window_end_dt else None
+        is_active = window_end_dt is not None
+        source = "API"
+    else:
+        is_active = window_info.get("is_active", False)
+        window_end_dt   = _parse_dt(window_info.get("window_end", "")) if is_active else None
+        window_start_dt = _parse_dt(window_info.get("window_start", "")) if is_active else None
+        cost = usage.get("cost_usd", 0.0)
+        pct = cost / limit_usd * 100 if limit_usd > 0 else 0
+        source = "local"
 
     cost = usage.get("cost_usd", 0.0)
-    pct = cost / limit_usd * 100 if limit_usd > 0 else 0
 
     # ── Title ──────────────────────────────────────────────────────────
     ttk.Label(frame, text="Claude Token Monitor",

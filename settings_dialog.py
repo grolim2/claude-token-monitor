@@ -6,7 +6,7 @@ from pathlib import Path
 CONFIG_FILE = Path.home() / ".claude" / "token_monitor_config.json"
 DEFAULT_CONFIG = {
     "cost_limit_usd": 8.0,
-    "refresh_seconds": 30,
+    "refresh_seconds": 300,   # API rate limit: poll at most every 5min
 }
 
 
