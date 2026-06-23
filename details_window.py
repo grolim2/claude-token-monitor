@@ -19,21 +19,27 @@ except Exception:
 
 
 def _apply_light_titlebar(win):
-    """Set white title bar via Windows DWM (Win10/11)."""
+    """Set white title bar and remove icon via Windows DWM + Win32 (Win10/11)."""
     try:
         hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
-        # Disable dark mode
+        # DWM: disable dark mode
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 20, ctypes.byref(ctypes.c_int(0)), 4)
-        # Set caption background to white — Windows 11 (attr 35)
+        # DWM: white caption background (Win11 attr 35)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 35, ctypes.byref(ctypes.c_int(0x00FFFFFF)), 4)
-        # Set caption text color to dark — Windows 11 (attr 36)
+        # DWM: dark caption text (Win11 attr 36)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 36, ctypes.byref(ctypes.c_int(0x001D1D1F)), 4)
-        # Remove icon via WM_SETICON with NULL handles
-        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 1, 0)  # ICON_BIG = NULL
-        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 0, 0)  # ICON_SMALL = NULL
+        # Remove icon: WS_EX_DLGMODALFRAME suppresses the icon area
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
+        ctypes.windll.user32.SetWindowLongW(hwnd, -20, style | 0x00000001)  # WS_EX_DLGMODALFRAME
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 1, 0)  # WM_SETICON ICON_BIG = NULL
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 0, 0)  # WM_SETICON ICON_SMALL = NULL
+        # Force title bar redraw to apply the new style
+        ctypes.windll.user32.SetWindowPos(
+            hwnd, 0, 0, 0, 0, 0,
+            0x0001 | 0x0002 | 0x0004 | 0x0020)  # NOSIZE|NOMOVE|NOZORDER|FRAMECHANGED
     except Exception:
         pass
 
