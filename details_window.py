@@ -3,18 +3,62 @@ Details window — Apple-inspired flat design.
 """
 
 import tkinter as tk
+from tkinter import ttk
 from datetime import datetime, timezone, timedelta
 from token_tracker import get_window_series, get_all_jsonl_files
+import ctypes
 
 # Enable per-monitor DPI awareness before any Tk window is created
 try:
-    import ctypes
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
     try:
         ctypes.windll.user32.SetProcessDPIAware()
     except Exception:
         pass
+
+
+def _apply_light_titlebar(win):
+    """Set white title bar and light chrome via Windows DWM (Win10/11)."""
+    try:
+        hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+        # Disable dark mode
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 20, ctypes.byref(ctypes.c_int(0)), 4)
+        # Set caption (title bar) background to white — Windows 11 only (attr 35)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 35, ctypes.byref(ctypes.c_int(0x00FFFFFF)), 4)
+        # Set caption text color to dark — Windows 11 only (attr 36)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 36, ctypes.byref(ctypes.c_int(0x001D1D1F)), 4)
+    except Exception:
+        pass
+
+
+def _make_slim_scrollbar(parent, canvas):
+    """Thin 6px ttk scrollbar without arrows, matching the light palette."""
+    style = ttk.Style()
+    style.theme_use("default")
+    style.configure(
+        "Slim.Vertical.TScrollbar",
+        background=BORDER,
+        troughcolor=BG,
+        borderwidth=0,
+        relief="flat",
+        arrowsize=0,
+        width=6,
+    )
+    style.layout("Slim.Vertical.TScrollbar", [
+        ("Vertical.Scrollbar.trough", {
+            "sticky": "ns",
+            "children": [
+                ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})
+            ]
+        })
+    ])
+    sb = ttk.Scrollbar(parent, orient="vertical",
+                       command=canvas.yview, style="Slim.Vertical.TScrollbar")
+    return sb
 
 # ── Palette ────────────────────────────────────────────────────────────────
 BG       = "#FFFFFF"
@@ -237,9 +281,12 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     win.attributes("-topmost", True)
     win.geometry(f"{W}x560")
 
+    # Apply light title bar once the window handle is available
+    win.after(50, lambda: _apply_light_titlebar(win))
+
     # ── Scrollable container ───────────────────────────────────────────────
     _scroll_cv = tk.Canvas(win, bg=BG, highlightthickness=0, bd=0)
-    _scrollbar = tk.Scrollbar(win, orient="vertical", command=_scroll_cv.yview)
+    _scrollbar = _make_slim_scrollbar(win, _scroll_cv)
     _scroll_cv.configure(yscrollcommand=_scrollbar.set)
     _scrollbar.pack(side="right", fill="y")
     _scroll_cv.pack(side="left", fill="both", expand=True)
