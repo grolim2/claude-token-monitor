@@ -128,6 +128,76 @@ def get_window_info() -> dict:
     }
 
 
+def get_window_series() -> list:
+    """
+    Returns list of (t_seconds, cumulative_tokens) for every API call
+    in the current 5h window, sorted by time.
+    t_seconds = seconds elapsed since window_start.
+    cumulative_tokens = input + output + cache_creation + cache_read
+    """
+    window = get_window_info()
+    if not window.get("is_active"):
+        return []
+
+    since = datetime.fromisoformat(window["window_start"])
+    window_end = datetime.fromisoformat(window["window_end"])
+
+    events = []
+    for filepath in get_all_jsonl_files():
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts_str = obj.get("timestamp")
+                    if not ts_str:
+                        continue
+                    try:
+                        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                    if ts < since or ts > window_end:
+                        continue
+                    msg = obj.get("message", {})
+                    if not isinstance(msg, dict):
+                        continue
+                    usage = msg.get("usage", {})
+                    if not isinstance(usage, dict) or not usage:
+                        continue
+
+                    cc = usage.get("cache_creation", {}) or {}
+                    c5m = cc.get("ephemeral_5m_input_tokens", 0)
+                    c1h = cc.get("ephemeral_1h_input_tokens", 0)
+                    if c5m == 0 and c1h == 0:
+                        c5m = usage.get("cache_creation_input_tokens", 0)
+
+                    tokens = (
+                        usage.get("input_tokens", 0)
+                        + usage.get("output_tokens", 0)
+                        + c5m + c1h
+                        + usage.get("cache_read_input_tokens", 0)
+                    )
+                    t_sec = (ts - since).total_seconds()
+                    events.append((t_sec, tokens))
+        except (OSError, PermissionError):
+            pass
+
+    events.sort(key=lambda x: x[0])
+
+    # Build cumulative series
+    cumulative = 0
+    series = [(0, 0)]
+    for t_sec, tokens in events:
+        cumulative += tokens
+        series.append((t_sec, cumulative))
+    return series
+
+
 def get_usage_last_5h() -> dict:
     window = get_window_info()
     if window.get("is_active") and window.get("window_start"):
