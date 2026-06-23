@@ -5,7 +5,7 @@ from pathlib import Path
 
 CONFIG_FILE = Path.home() / ".claude" / "token_monitor_config.json"
 DEFAULT_CONFIG = {
-    "refresh_seconds": 300,
+    "refresh_seconds": 60,
 }
 
 
@@ -35,7 +35,7 @@ def open_settings(current_config: dict, on_save=None, **_):
     ttk.Label(frame, text="Intervalo de atualização (s):").grid(row=0, column=0, sticky="w", pady=4)
     refresh_var = tk.StringVar(value=str(current_config.get("refresh_seconds", 300)))
     ttk.Entry(frame, textvariable=refresh_var, width=12).grid(row=0, column=1, padx=8, sticky="w")
-    ttk.Label(frame, text="(mínimo 60s — limite da API)", foreground="gray",
+    ttk.Label(frame, text="(mínimo 10s)", foreground="gray",
               font=("Segoe UI", 8)).grid(row=1, column=0, columnspan=2, sticky="w")
 
     btn_frame = ttk.Frame(frame)

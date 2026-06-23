@@ -115,7 +115,7 @@ def _refresh():
 
         # Normal periodic poll
         elapsed = (now - last_poll).total_seconds()
-        if elapsed >= _config.get("refresh_seconds", 300):
+        if elapsed >= _config.get("refresh_seconds", 60):
             _do_refresh()
             last_poll = now
 
