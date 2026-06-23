@@ -404,10 +404,12 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
     rng_blk.pack(side="right")
     range_start_var = tk.StringVar(master=win)
     range_end_var   = tk.StringVar(master=win)
-    tk.Label(rng_blk, textvariable=range_start_var, bg=BG, fg=T_TER,
-             font=("Segoe UI", 10), anchor="e").pack(anchor="e")
-    tk.Label(rng_blk, textvariable=range_end_var, bg=BG, fg=T_TER,
-             font=("Segoe UI", 10), anchor="e").pack(anchor="e")
+    range_start_lbl = tk.Label(rng_blk, textvariable=range_start_var, bg=BG, fg=T_TER,
+                               font=("Segoe UI", 10), anchor="e", justify="right")
+    range_start_lbl.pack(anchor="e")
+    range_end_lbl = tk.Label(rng_blk, textvariable=range_end_var, bg=BG, fg=T_TER,
+                             font=("Segoe UI", 10), anchor="e", justify="right")
+    range_end_lbl.pack(anchor="e")
 
     def _update_range(wstart, wend):
         if wstart and wend:
@@ -560,8 +562,16 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
                 widget.config(font=(family, sz, weight))
             except Exception:
                 pass
+        # Range labels: right-side of header; give them half the usable width
+        rng_wrap = max(70, new_w // 2 - 30)
+        for lbl in (range_start_lbl, range_end_lbl):
+            try:
+                lbl.config(wraplength=rng_wrap)
+            except Exception:
+                pass
+        # Projection text: usable = total - section padding(32) - badge(~68) - gap(8)
         try:
-            proj_text_label.config(wraplength=max(80, new_w - 80))
+            proj_text_label.config(wraplength=max(60, new_w - 108))
         except Exception:
             pass
 
