@@ -6,6 +6,16 @@ import tkinter as tk
 from datetime import datetime, timezone, timedelta
 from token_tracker import get_window_series, get_all_jsonl_files
 
+# Enable per-monitor DPI awareness before any Tk window is created
+try:
+    import ctypes
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 # ── Palette ────────────────────────────────────────────────────────────────
 BG       = "#FFFFFF"
 SURFACE  = "#F5F5F7"
@@ -143,12 +153,12 @@ def _draw_chart(canvas, series, window_sec, api_pct, now_sec, implied_limit):
         pts += [tx(t), ty(v)]
     if len(pts) >= 4:
         canvas.create_line(*pts, fill=C_LINE, width=2,
-                           capstyle="round", joinstyle="round")
+                           capstyle="round", joinstyle="round", smooth=True)
 
-    # Endpoint dot at now
+    # Endpoint dot at now — draw ring for crispness
     dx, dy = tx(now_sec), ty(ys[-1])
-    canvas.create_oval(dx - 4, dy - 4, dx + 4, dy + 4,
-                       fill=C_LINE, outline=BG, width=2)
+    canvas.create_oval(dx - 5, dy - 5, dx + 5, dy + 5, fill=BG, outline=C_LINE, width=2)
+    canvas.create_oval(dx - 2, dy - 2, dx + 2, dy + 2, fill=C_LINE, outline="")
 
     # ── Now line ──
     xn = tx(now_sec)
@@ -223,13 +233,34 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     win.title("Claude Token Monitor")
     win.configure(bg=BG)
     win.resizable(True, True)
-    win.minsize(300, 400)
+    win.minsize(300, 360)
     win.attributes("-topmost", True)
-    win.geometry(f"{W}x620")
+    win.geometry(f"{W}x560")
 
-    outer = tk.Frame(win, bg=BG)
-    outer.pack(fill="both", expand=True)
+    # ── Scrollable container ───────────────────────────────────────────────
+    _scroll_cv = tk.Canvas(win, bg=BG, highlightthickness=0, bd=0)
+    _scrollbar = tk.Scrollbar(win, orient="vertical", command=_scroll_cv.yview)
+    _scroll_cv.configure(yscrollcommand=_scrollbar.set)
+    _scrollbar.pack(side="right", fill="y")
+    _scroll_cv.pack(side="left", fill="both", expand=True)
+
+    outer = tk.Frame(_scroll_cv, bg=BG)
     outer.columnconfigure(0, weight=1)
+    _outer_id = _scroll_cv.create_window((0, 0), window=outer, anchor="nw")
+
+    def _on_content_resize(event):
+        _scroll_cv.configure(scrollregion=_scroll_cv.bbox("all"))
+
+    def _on_canvas_resize(event):
+        _scroll_cv.itemconfig(_outer_id, width=event.width)
+
+    outer.bind("<Configure>", _on_content_resize)
+    _scroll_cv.bind("<Configure>", _on_canvas_resize)
+
+    def _on_mousewheel(event):
+        _scroll_cv.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    win.bind_all("<MouseWheel>", _on_mousewheel)
 
     def _extract(api_usage, local_usage):
         five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
