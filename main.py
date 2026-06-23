@@ -20,7 +20,8 @@ from settings_dialog import load_config, save_config, open_settings
 _config = load_config()
 _tray_icon = None
 _stop_event = threading.Event()
-_last_api_usage  = {}
+_last_api_usage  = {}   # latest raw API response (may contain errors/null five_hour)
+_last_valid_api  = {}   # last response with a real five_hour dict — never cleared on error
 _last_window_info = {}
 _last_local_usage = {}
 _details_win_ref  = [None]   # singleton: holds the open details window
@@ -48,15 +49,16 @@ def _build_tooltip(api_usage: dict, window_info: dict, local_usage: dict) -> str
 
 def _do_refresh():
     """Fetch data from API + local, update tray icon and tooltip."""
-    global _last_api_usage, _last_window_info, _last_local_usage
+    global _last_api_usage, _last_valid_api, _last_window_info, _last_local_usage
     try:
         api_usage = get_api_usage()
-        # Only overwrite last known good data if the new response has valid five_hour.
-        # This prevents a transient error or null response from zeroing the display.
-        has_valid = (not api_usage.get("error")
-                     and api_usage.get("five_hour") is not None)
-        if has_valid or not _last_api_usage or _last_api_usage.get("error"):
-            _last_api_usage = api_usage
+        _last_api_usage = api_usage
+
+        # Only update the "valid" cache when the response actually has five_hour data.
+        # This prevents any transient error / null response from ever zeroing the display.
+        five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
+        if isinstance(five_h, dict):
+            _last_valid_api = api_usage
 
         window_info = get_window_info()
         _last_window_info = window_info
@@ -64,12 +66,14 @@ def _do_refresh():
         local_usage = get_usage_last_5h()
         _last_local_usage = local_usage
 
-        five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
-        pct = float(five_h.get("utilization", 0)) if five_h else 0.0
+        # Use the last known valid data for the tray icon so it never shows 0% on error
+        display = _last_valid_api if _last_valid_api else _last_api_usage
+        five_h_d = display.get("five_hour") if not display.get("error") else None
+        pct = float(five_h_d.get("utilization", 0)) if five_h_d else 0.0
 
         cost = local_usage.get("cost_usd", 0.0)
         icon_img = make_icon(pct, cost)
-        tooltip  = _build_tooltip(api_usage, window_info, local_usage)
+        tooltip  = _build_tooltip(display, window_info, local_usage)
 
         if _tray_icon:
             _tray_icon.icon  = icon_img
@@ -81,10 +85,10 @@ def _do_refresh():
 
 
 def _resets_at_dt():
-    """Return the resets_at datetime from last API result, or None."""
+    """Return the resets_at datetime from last valid API result, or None."""
     from datetime import datetime
-    five_h = (_last_api_usage.get("five_hour")
-              if not _last_api_usage.get("error") else None)
+    src = _last_valid_api if _last_valid_api else _last_api_usage
+    five_h = src.get("five_hour") if not src.get("error") else None
     if not five_h:
         return None
     try:
@@ -138,7 +142,8 @@ def _show_details(icon, item):
             _details_win_ref[0] = None
 
     def get_api_usage():
-        return dict(_last_api_usage)
+        # Always return last valid API data; prevents zeros on transient errors
+        return dict(_last_valid_api if _last_valid_api else _last_api_usage)
 
     def get_local_usage():
         return dict(_last_local_usage)

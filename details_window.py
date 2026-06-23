@@ -537,12 +537,15 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
     _cached_series = [get_window_series()]
     _last_snap     = [_jsonl_snapshot()]
     _window_sec    = 5 * 3600
-    # mutable state updated each tick
+    # mutable state — only updated when real data arrives; preserves last known good values
     _state = {
-        "pct": pct,
+        "pct":             pct,
         "window_end_dt":   window_end_dt,
         "window_start_dt": window_start_dt,
         "implied_limit":   implied_limit,
+        "cost":            cost,
+        "total_tokens":    total_tokens,
+        "usage":           usage,
     }
 
     def _tick():
@@ -553,25 +556,47 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
             new_pct, new_wed, new_wsd, new_cost, new_tok, new_lim, new_usage = \
                 _extract(get_api_usage(), get_local_usage())
 
-            state_changed = (new_pct != _state["pct"] or
-                             new_wed != _state["window_end_dt"])
+            # Guard: only commit new values to _state when the data is real.
+            # This prevents a transient API error or startup latency from
+            # zeroing the percentage, countdown, and charts mid-session.
+            has_api_data   = (new_pct > 0 or new_wed is not None)
+            has_local_data = (new_tok > 0)
 
-            _state["pct"]            = new_pct
-            _state["window_end_dt"]  = new_wed
-            _state["window_start_dt"]= new_wsd
-            _state["implied_limit"]  = new_lim
+            if has_api_data:
+                state_changed = (new_pct != _state["pct"] or
+                                 new_wed != _state["window_end_dt"])
+                _state["pct"]             = new_pct
+                _state["window_end_dt"]   = new_wed
+                _state["window_start_dt"] = new_wsd
+                if has_local_data:
+                    _state["implied_limit"] = new_lim
+            else:
+                state_changed = False
 
-            bar_col = BAR_DANG if new_pct >= 80 else (BAR_WARN if new_pct >= 50 else BAR_NRM)
-            pct_var.set(f"{new_pct:.0f}%")
+            if has_local_data:
+                _state["cost"]         = new_cost
+                _state["total_tokens"] = new_tok
+                _state["usage"]        = new_usage
+
+            # Always read from _state so stale-but-valid values stay on screen
+            eff_pct   = _state["pct"]
+            eff_wed   = _state["window_end_dt"]
+            eff_wsd   = _state["window_start_dt"]
+            eff_lim   = _state["implied_limit"]
+            eff_cost  = _state["cost"]
+            eff_tok   = _state["total_tokens"]
+            eff_usage = _state["usage"]
+
+            bar_col = BAR_DANG if eff_pct >= 80 else (BAR_WARN if eff_pct >= 50 else BAR_NRM)
+            pct_var.set(f"{eff_pct:.0f}%")
             pct_label.config(fg=bar_col)
-            tok_var.set(f"{new_tok:,} tokens".replace(",", "."))
-            cost_var.set(f"${new_cost:.4f} USD")
-            _update_bar(new_pct, bar_col)
+            tok_var.set(f"{eff_tok:,} tokens".replace(",", "."))
+            cost_var.set(f"${eff_cost:.4f} USD")
+            _update_bar(eff_pct, bar_col)
             if state_changed:
-                _update_range(new_wsd, new_wed)
-            # Update token detail cards
+                _update_range(eff_wsd, eff_wed)
             for var, key in _tok_vars:
-                val = new_usage.get(key, 0)
+                val = eff_usage.get(key, 0)
                 var.set(f"{val:,}".replace(",", "."))
 
             # ── Countdown ─────────────────────────────────────────────────
@@ -582,8 +607,11 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
                     h, rem = divmod(secs, 3600)
                     m, s   = divmod(rem, 60)
                     countdown_var.set(f"{h:02d}:{m:02d}:{s:02d}")
-                else:
+                elif secs > -300:
                     countdown_var.set("Encerrado!")
+                else:
+                    # Window ended >5 min ago — waiting for new session data
+                    countdown_var.set("--:--:--")
             else:
                 countdown_var.set("--:--:--")
 
@@ -593,16 +621,14 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
                 _last_snap[0] = snap
                 _cached_series[0] = get_window_series()
 
-            wsd = _state["window_start_dt"]
             now_sec = 0.0
-            if wsd:
+            if eff_wsd:
                 now_sec = min(
-                    (datetime.now(timezone.utc) - wsd).total_seconds(),
+                    (datetime.now(timezone.utc) - eff_wsd).total_seconds(),
                     _window_sec)
 
-            lim    = _state["implied_limit"]
             result = _draw_chart(chart_cv, _cached_series[0],
-                                 _window_sec, _state["pct"], now_sec, lim)
+                                 _window_sec, eff_pct, now_sec, eff_lim)
 
             if result and lim:
                 sl, cur_val, r2val, proj_end, _ = result
