@@ -294,7 +294,7 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
     win.configure(bg=BG)
     win.resizable(True, True)
     win.minsize(300, 360)
-    win.attributes("-topmost", True)
+
     win.geometry(f"{W}x560")
 
     # Transparent 16x16 ICO to hide the default Tkinter feather icon

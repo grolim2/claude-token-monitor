@@ -50,8 +50,13 @@ def _do_refresh():
     """Fetch data from API + local, update tray icon and tooltip."""
     global _last_api_usage, _last_window_info, _last_local_usage
     try:
-        api_usage   = get_api_usage()
-        _last_api_usage = api_usage
+        api_usage = get_api_usage()
+        # Only overwrite last known good data if the new response has valid five_hour.
+        # This prevents a transient error or null response from zeroing the display.
+        has_valid = (not api_usage.get("error")
+                     and api_usage.get("five_hour") is not None)
+        if has_valid or not _last_api_usage or _last_api_usage.get("error"):
+            _last_api_usage = api_usage
 
         window_info = get_window_info()
         _last_window_info = window_info
