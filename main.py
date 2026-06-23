@@ -45,38 +45,79 @@ def _build_tooltip(api_usage: dict, window_info: dict, local_usage: dict) -> str
     return f"Claude (5h): -- | encerra em {h}h{m:02d}m (${cost:.3f})"[:128]
 
 
-def _refresh():
+def _do_refresh():
+    """Fetch data from API + local, update tray icon and tooltip."""
     global _last_api_usage, _last_window_info, _last_local_usage
+    try:
+        api_usage   = get_api_usage()
+        _last_api_usage = api_usage
+
+        window_info = get_window_info()
+        _last_window_info = window_info
+
+        local_usage = get_usage_last_5h()
+        _last_local_usage = local_usage
+
+        five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
+        pct = float(five_h.get("utilization", 0)) if five_h else 0.0
+
+        cost = local_usage.get("cost_usd", 0.0)
+        icon_img = make_icon(pct, cost)
+        tooltip  = _build_tooltip(api_usage, window_info, local_usage)
+
+        if _tray_icon:
+            _tray_icon.icon  = icon_img
+            _tray_icon.title = tooltip
+
+    except Exception as e:
+        if _tray_icon:
+            _tray_icon.title = f"Erro: {e}"[:128]
+
+
+def _resets_at_dt():
+    """Return the resets_at datetime from last API result, or None."""
+    from datetime import datetime
+    five_h = (_last_api_usage.get("five_hour")
+              if not _last_api_usage.get("error") else None)
+    if not five_h:
+        return None
+    try:
+        return datetime.fromisoformat(
+            five_h["resets_at"].replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _refresh():
+    from datetime import datetime, timezone
+    _do_refresh()
+    last_poll = datetime.now(timezone.utc)
+    reset_triggered = False
+
     while not _stop_event.is_set():
-        try:
-            api_usage  = get_api_usage()
-            _last_api_usage = api_usage
+        _stop_event.wait(1)          # tick every second
+        if _stop_event.is_set():
+            break
 
-            window_info = get_window_info()
-            _last_window_info = window_info
+        now = datetime.now(timezone.utc)
+        resets_at = _resets_at_dt()
 
-            local_usage = get_usage_last_5h()
-            _last_local_usage = local_usage
+        # Detect window reset: resets_at just passed → poll immediately
+        if resets_at and not reset_triggered and now >= resets_at:
+            reset_triggered = True
+            _do_refresh()
+            last_poll = now
+            continue
 
-            five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
-            if five_h:
-                pct = float(five_h.get("utilization", 0))
-            else:
-                pct = 0.0
+        # Reset the trigger guard once we're past the reset and have fresh data
+        if resets_at and reset_triggered and now < resets_at:
+            reset_triggered = False
 
-            cost = local_usage.get("cost_usd", 0.0)
-            icon_img = make_icon(pct, cost)
-            tooltip  = _build_tooltip(api_usage, window_info, local_usage)
-
-            if _tray_icon:
-                _tray_icon.icon  = icon_img
-                _tray_icon.title = tooltip
-
-        except Exception as e:
-            if _tray_icon:
-                _tray_icon.title = f"Erro: {e}"[:128]
-
-        _stop_event.wait(_config.get("refresh_seconds", 30))
+        # Normal periodic poll
+        elapsed = (now - last_poll).total_seconds()
+        if elapsed >= _config.get("refresh_seconds", 300):
+            _do_refresh()
+            last_poll = now
 
 
 def _show_details(icon, item):
