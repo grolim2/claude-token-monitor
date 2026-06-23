@@ -19,7 +19,7 @@ except Exception:
 
 
 def _apply_light_titlebar(win):
-    """Set white title bar, remove icon and title text via Windows DWM (Win10/11)."""
+    """Set white title bar via Windows DWM (Win10/11)."""
     try:
         hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
         # Disable dark mode
@@ -31,14 +31,9 @@ def _apply_light_titlebar(win):
         # Set caption text color to dark — Windows 11 (attr 36)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 36, ctypes.byref(ctypes.c_int(0x001D1D1F)), 4)
-        # Remove window icon by adding WS_EX_DLGMODALFRAME and clearing icon
-        GWL_EXSTYLE = -20
-        WS_EX_DLGMODALFRAME = 0x00000001
-        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_DLGMODALFRAME)
-        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 1, 0)  # WM_SETICON ICON_BIG = NULL
-        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 0, 0)  # WM_SETICON ICON_SMALL = NULL
-        ctypes.windll.user32.DrawMenuBar(hwnd)
+        # Remove icon via WM_SETICON with NULL handles
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 1, 0)  # ICON_BIG = NULL
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 0, 0)  # ICON_SMALL = NULL
     except Exception:
         pass
 
@@ -289,7 +284,11 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     win.attributes("-topmost", True)
     win.geometry(f"{W}x560")
 
-    # Apply light title bar once the window handle is available
+    # Remove window icon (Tkinter way) and apply light title bar
+    try:
+        win.iconphoto(False, tk.PhotoImage())
+    except Exception:
+        pass
     win.after(50, lambda: _apply_light_titlebar(win))
 
     # ── Scrollable container ───────────────────────────────────────────────
@@ -591,7 +590,10 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
                 _update_proj(proj_pct, r2val, t_hit, _window_sec)
 
         except Exception:
-            pass
+            import traceback, pathlib
+            log = pathlib.Path.home() / "claude_token_debug.txt"
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
         win.after(1_000, _tick)
 
     win.after(100, _tick)
