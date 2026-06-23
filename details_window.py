@@ -324,19 +324,31 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     ttk.Button(frame, text="Fechar", command=win.destroy).grid(
         row=18, column=0, columnspan=2, pady=(10, 0))
 
-    _cached_series = [get_window_series()]  # list so closure can mutate
+    from token_tracker import get_all_jsonl_files
 
-    def _reload_series():
-        """Re-read JSONL every 60s (data only changes on new API calls)."""
+    def _jsonl_snapshot():
+        """Return {path: mtime} for all current JSONL files."""
+        result = {}
+        for f in get_all_jsonl_files():
+            try:
+                result[str(f)] = f.stat().st_mtime
+            except OSError:
+                pass
+        return result
+
+    _cached_series = [get_window_series()]
+    _last_snapshot = [_jsonl_snapshot()]
+
+    def _tick():
+        """Every second: check for JSONL changes, reload series if needed, redraw."""
         if not win.winfo_exists():
             return
-        _cached_series[0] = get_window_series()
-        win.after(60_000, _reload_series)
 
-    def _redraw():
-        """Redraw chart every second — moves 'now' line and updates projection."""
-        if not win.winfo_exists():
-            return
+        snap = _jsonl_snapshot()
+        if snap != _last_snapshot[0]:
+            _last_snapshot[0] = snap
+            _cached_series[0] = get_window_series()
+
         window_sec = 5 * 3600
         now_sec = 0.0
         if window_start_dt:
@@ -345,10 +357,9 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
                 window_sec
             )
         _draw_chart(chart_canvas, _cached_series[0], window_sec, pct, now_sec)
-        win.after(1_000, _redraw)
+        win.after(1_000, _tick)
 
-    win.after(100, _redraw)
-    win.after(60_000, _reload_series)
+    win.after(100, _tick)
 
     # ── Countdown tick (every second) ─────────────────────────────────
     def _tick():
