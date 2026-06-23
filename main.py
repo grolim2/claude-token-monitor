@@ -23,6 +23,7 @@ _stop_event = threading.Event()
 _last_api_usage  = {}
 _last_window_info = {}
 _last_local_usage = {}
+_details_win_ref  = [None]   # singleton: holds the open details window
 
 
 def _build_tooltip(api_usage: dict, window_info: dict, local_usage: dict) -> str:
@@ -121,6 +122,16 @@ def _refresh():
 
 
 def _show_details(icon, item):
+    # If window already open, bring it to front instead of creating a new one
+    if _details_win_ref[0] is not None:
+        try:
+            _details_win_ref[0].deiconify()
+            _details_win_ref[0].lift()
+            _details_win_ref[0].focus_force()
+            return
+        except Exception:
+            _details_win_ref[0] = None
+
     def get_api_usage():
         return dict(_last_api_usage)
 
@@ -130,6 +141,7 @@ def _show_details(icon, item):
     threading.Thread(
         target=open_details,
         args=(get_api_usage, get_local_usage, 0.0),
+        kwargs={"win_ref": _details_win_ref},
         daemon=True,
     ).start()
 

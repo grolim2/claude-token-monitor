@@ -281,7 +281,7 @@ def _badge_label(parent, text, style="ok"):
 
 
 # ── Main window ────────────────────────────────────────────────────────────
-def open_details(get_api_usage, get_local_usage, limit_usd: float):
+def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None):
     win = tk.Tk()
     win.title("")
     win.configure(bg=BG)
@@ -301,6 +301,8 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
         win.iconbitmap(default=_ico_path)
     except Exception:
         pass
+    if win_ref is not None:
+        win_ref[0] = win
     win.after(50, lambda: _apply_light_titlebar(win))
 
     # ── Scrollable container ───────────────────────────────────────────────
@@ -383,14 +385,14 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     cd_blk.pack(side="left")
     tk.Label(cd_blk, text="encerra em", bg=BG, fg=T_TER,
              font=("Segoe UI", 10)).pack(anchor="w")
-    countdown_var = tk.StringVar(value="--:--:--")
+    countdown_var = tk.StringVar(master=win, value="--:--:--")
     tk.Label(cd_blk, textvariable=countdown_var, bg=BG, fg=T_PRI,
              font=("Segoe UI", 26, "bold"), anchor="w").pack(anchor="w")
 
     rng_blk = tk.Frame(mid, bg=BG)
     rng_blk.pack(side="right")
-    range_start_var = tk.StringVar()
-    range_end_var   = tk.StringVar()
+    range_start_var = tk.StringVar(master=win)
+    range_end_var   = tk.StringVar(master=win)
     tk.Label(rng_blk, textvariable=range_start_var, bg=BG, fg=T_TER,
              font=("Segoe UI", 10), anchor="e").pack(anchor="e")
     tk.Label(rng_blk, textvariable=range_end_var, bg=BG, fg=T_TER,
@@ -417,15 +419,15 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     num_row = tk.Frame(sec1, bg=BG)
     num_row.grid(row=1, column=0, sticky="ew", pady=(0, 10))
 
-    pct_var   = tk.StringVar(value=f"{pct:.0f}%")
+    pct_var   = tk.StringVar(master=win, value=f"{pct:.0f}%")
     pct_label = tk.Label(num_row, textvariable=pct_var, bg=BG, fg=BAR_NRM,
                          font=("Segoe UI", 36, "bold"), anchor="w")
     pct_label.pack(side="left")
 
     meta = tk.Frame(num_row, bg=BG)
     meta.pack(side="right", anchor="se")
-    tok_var  = tk.StringVar(value=f"{total_tokens:,} tokens".replace(",", "."))
-    cost_var = tk.StringVar(value=f"${cost:.4f} USD")
+    tok_var  = tk.StringVar(master=win, value=f"{total_tokens:,} tokens".replace(",", "."))
+    cost_var = tk.StringVar(master=win, value=f"${cost:.4f} USD")
     tk.Label(meta, textvariable=tok_var,  bg=BG, fg=T_SEC,
              font=("Segoe UI", 12), anchor="e").pack(anchor="e")
     tk.Label(meta, textvariable=cost_var, bg=BG, fg=T_TER,
@@ -457,7 +459,7 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     proj_frame.grid(row=2, column=0, sticky="w", pady=(8, 0))
     proj_badge_holder = tk.Frame(proj_frame, bg=BG)
     proj_badge_holder.pack(side="left")
-    proj_text_var = tk.StringVar(value="calculando projeção...")
+    proj_text_var = tk.StringVar(master=win, value="calculando projeção...")
     tk.Label(proj_frame, textvariable=proj_text_var, bg=BG, fg=T_SEC,
              font=("Segoe UI", 10), wraplength=W - 60, justify="left").pack(
                  side="left", padx=(8, 0))
@@ -500,7 +502,7 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
                   padx=(0, 4) if c2c == 0 else (4, 0), pady=3)
         tk.Label(card, text=lbl, bg=SURFACE, fg=T_TER,
                  font=("Segoe UI", 10)).pack(anchor="w")
-        v = tk.StringVar(value="–")
+        v = tk.StringVar(master=win, value="–")
         tk.Label(card, textvariable=v, bg=SURFACE, fg=T_PRI,
                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
         _tok_vars.append((v, _key))
@@ -610,3 +612,5 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
 
     win.after(100, _tick)
     win.mainloop()
+    if win_ref is not None:
+        win_ref[0] = None
