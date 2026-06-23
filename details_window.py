@@ -19,18 +19,26 @@ except Exception:
 
 
 def _apply_light_titlebar(win):
-    """Set white title bar and light chrome via Windows DWM (Win10/11)."""
+    """Set white title bar, remove icon and title text via Windows DWM (Win10/11)."""
     try:
         hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
         # Disable dark mode
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 20, ctypes.byref(ctypes.c_int(0)), 4)
-        # Set caption (title bar) background to white — Windows 11 only (attr 35)
+        # Set caption background to white — Windows 11 (attr 35)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 35, ctypes.byref(ctypes.c_int(0x00FFFFFF)), 4)
-        # Set caption text color to dark — Windows 11 only (attr 36)
+        # Set caption text color to dark — Windows 11 (attr 36)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 36, ctypes.byref(ctypes.c_int(0x001D1D1F)), 4)
+        # Remove window icon by adding WS_EX_DLGMODALFRAME and clearing icon
+        GWL_EXSTYLE = -20
+        WS_EX_DLGMODALFRAME = 0x00000001
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_DLGMODALFRAME)
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 1, 0)  # WM_SETICON ICON_BIG = NULL
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 0, 0)  # WM_SETICON ICON_SMALL = NULL
+        ctypes.windll.user32.DrawMenuBar(hwnd)
     except Exception:
         pass
 
@@ -274,7 +282,7 @@ def _badge_label(parent, text, style="ok"):
 # ── Main window ────────────────────────────────────────────────────────────
 def open_details(get_api_usage, get_local_usage, limit_usd: float):
     win = tk.Tk()
-    win.title("Claude Token Monitor")
+    win.title("")
     win.configure(bg=BG)
     win.resizable(True, True)
     win.minsize(300, 360)
@@ -440,7 +448,8 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     proj_badge_holder.pack(side="left")
     proj_text_var = tk.StringVar(value="calculando projeção...")
     tk.Label(proj_frame, textvariable=proj_text_var, bg=BG, fg=T_SEC,
-             font=("Segoe UI", 11)).pack(side="left", padx=(8, 0))
+             font=("Segoe UI", 10), wraplength=W - 60, justify="left").pack(
+                 side="left", padx=(8, 0))
 
     _proj_badge = [None]
 
@@ -451,11 +460,11 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
         if t_hit is not None and t_hit <= window_sec:
             badge = _badge_label(proj_badge_holder, "atenção", "danger")
             proj_text_var.set(
-                f"limite atingido {_fmt_hm(window_sec - t_hit)} antes do fim  ·  R²={r2:.2f}")
+                f"limite atingido {_fmt_hm(window_sec - t_hit)} antes do fim")
         else:
             badge = _badge_label(proj_badge_holder, "projeção", "warn" if proj_pct > 80 else "ok")
             proj_text_var.set(
-                f"{proj_pct:.0f}% ao fim · {remaining_pct:.0f}% restante  ·  R²={r2:.2f}")
+                f"{proj_pct:.0f}% ao fim · {remaining_pct:.0f}% restante")
         badge.pack()
 
     # ── TOKEN BREAKDOWN ────────────────────────────────────────────────────
@@ -466,22 +475,24 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     sec3.columnconfigure(0, weight=1)
     sec3.columnconfigure(1, weight=1)
 
-    tok_data = [
-        ("input",        usage.get("input_tokens", 0)),
-        ("output",       usage.get("output_tokens", 0)),
-        ("cache 5m",     usage.get("cache_creation_5m", 0)),
-        ("cache leitura",usage.get("cache_read_input_tokens", 0)),
+    tok_card_labels = [
+        ("input",         "input_tokens"),
+        ("output",        "output_tokens"),
+        ("cache 5m",      "cache_creation_5m"),
+        ("cache leitura", "cache_read_input_tokens"),
     ]
-    for i, (lbl, val) in enumerate(tok_data):
+    _tok_vars = []
+    for i, (lbl, _key) in enumerate(tok_card_labels):
         r2c, c2c = divmod(i, 2)
         card = tk.Frame(sec3, bg=SURFACE, padx=10, pady=8)
         card.grid(row=r2c + 1, column=c2c, sticky="nsew",
                   padx=(0, 4) if c2c == 0 else (4, 0), pady=3)
         tk.Label(card, text=lbl, bg=SURFACE, fg=T_TER,
                  font=("Segoe UI", 10)).pack(anchor="w")
-        tk.Label(card, text=f"{val:,}".replace(",", "."),
-                 bg=SURFACE, fg=T_PRI,
+        v = tk.StringVar(value="–")
+        tk.Label(card, textvariable=v, bg=SURFACE, fg=T_PRI,
                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        _tok_vars.append((v, _key))
 
     # Close button
     _divider(outer, row); row += 1
@@ -530,14 +541,18 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
             _state["window_start_dt"]= new_wsd
             _state["implied_limit"]  = new_lim
 
+            bar_col = BAR_DANG if new_pct >= 80 else (BAR_WARN if new_pct >= 50 else BAR_NRM)
+            pct_var.set(f"{new_pct:.0f}%")
+            pct_label.config(fg=bar_col)
+            tok_var.set(f"{new_tok:,} tokens".replace(",", "."))
+            cost_var.set(f"${new_cost:.4f} USD")
+            _update_bar(new_pct, bar_col)
             if state_changed:
-                bar_col = BAR_DANG if new_pct >= 80 else (BAR_WARN if new_pct >= 50 else BAR_NRM)
-                pct_var.set(f"{new_pct:.0f}%")
-                pct_label.config(fg=bar_col)
-                tok_var.set(f"{new_tok:,} tokens".replace(",", "."))
-                cost_var.set(f"${new_cost:.4f} USD")
-                _update_bar(new_pct, bar_col)
                 _update_range(new_wsd, new_wed)
+            # Update token detail cards
+            for var, key in _tok_vars:
+                val = new_usage.get(key, 0)
+                var.set(f"{val:,}".replace(",", "."))
 
             # ── Countdown ─────────────────────────────────────────────────
             wed = _state["window_end_dt"]
