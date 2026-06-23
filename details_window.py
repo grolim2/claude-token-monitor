@@ -153,8 +153,16 @@ def _draw_chart(canvas, series, window_sec, api_pct, now_sec, implied_limit):
 
     xs = [p[0] for p in series]
     ys = [p[1] for p in series]
-    slope, intercept, r2 = _wols(xs, ys)
-    proj_end = max(0.0, slope * window_sec + intercept)
+
+    # Extend series to now so OLS accounts for any flat period since last event
+    ols_xs = xs + ([now_sec] if now_sec > xs[-1] else [])
+    ols_ys = ys + ([ys[-1]] if now_sec > xs[-1] else [])
+    slope, intercept, r2 = _wols(ols_xs, ols_ys)
+
+    # Anchor projection to actual current value to avoid intercept drift
+    cur_val  = ys[-1]
+    rem_sec  = max(0.0, window_sec - now_sec)
+    proj_end = max(cur_val, cur_val + slope * rem_sec)
 
     def tx(t): return L + pw * t / window_sec
     def ty(v): return T + ph * (1 - min(v / implied_limit, 1.1))
@@ -182,19 +190,18 @@ def _draw_chart(canvas, series, window_sec, api_pct, now_sec, implied_limit):
     canvas.create_line(L, yp_lim, CW - R, yp_lim,
                        fill=C_LIM, dash=(5, 3), width=1)
 
-    # ── Projection line (from now to window end) ──
-    proj_x0 = max(0, now_sec)
+    # ── Projection line anchored at current real value ──
     proj_pts = []
     for i in range(41):
-        t = proj_x0 + (window_sec - proj_x0) * i / 40
-        v = max(0, slope * t + intercept)
+        t = now_sec + rem_sec * i / 40
+        v = max(0, cur_val + slope * (t - now_sec))
         proj_pts += [tx(t), ty(v)]
     if len(proj_pts) >= 4:
         canvas.create_line(*proj_pts, fill=C_PROJ, width=1, dash=(5, 4))
 
     # Projection end dot
-    canvas.create_oval(tx(window_sec) - 3, ty(max(0, proj_end)) - 3,
-                       tx(window_sec) + 3, ty(max(0, proj_end)) + 3,
+    canvas.create_oval(tx(window_sec) - 3, ty(proj_end) - 3,
+                       tx(window_sec) + 3, ty(proj_end) + 3,
                        fill=C_PROJ, outline="")
 
     # ── Actual line (extended to now) ──
@@ -229,7 +236,7 @@ def _draw_chart(canvas, series, window_sec, api_pct, now_sec, implied_limit):
     canvas.create_text(lx + 18, ly + 17, text="projeção", anchor="w",
                        font=("Segoe UI", 8), fill=T_SEC)
 
-    return slope, intercept, r2, proj_end, implied_limit
+    return slope, cur_val, r2, proj_end, implied_limit
 
 
 # ── Helper widgets ─────────────────────────────────────────────────────────
@@ -598,9 +605,11 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
                                  _window_sec, _state["pct"], now_sec, lim)
 
             if result and lim:
-                sl, ic, r2val, proj_end, _ = result
+                sl, cur_val, r2val, proj_end, _ = result
                 proj_pct = min(proj_end / lim * 100, 999)
-                t_hit    = ((lim - ic) / sl) if sl > 0 else None
+                # t_hit: seconds from now until slope hits limit (anchored to cur_val)
+                remaining_to_lim = lim - cur_val
+                t_hit = (now_sec + remaining_to_lim / sl) if sl > 0 and remaining_to_lim > 0 else None
                 _update_proj(proj_pct, r2val, t_hit, _window_sec)
 
         except Exception:
