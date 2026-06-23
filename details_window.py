@@ -323,11 +323,15 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
     outer.columnconfigure(0, weight=1)
     _outer_id = _scroll_cv.create_window((0, 0), window=outer, anchor="nw")
 
+    _scale_hook = [None]   # populated after widgets are built
+
     def _on_content_resize(event):
         _scroll_cv.configure(scrollregion=_scroll_cv.bbox("all"))
 
     def _on_canvas_resize(event):
         _scroll_cv.itemconfig(_outer_id, width=event.width)
+        if _scale_hook[0]:
+            _scale_hook[0](event.width)
 
     outer.bind("<Configure>", _on_content_resize)
     _scroll_cv.bind("<Configure>", _on_canvas_resize)
@@ -467,9 +471,9 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
     proj_badge_holder = tk.Frame(proj_frame, bg=BG)
     proj_badge_holder.pack(side="left")
     proj_text_var = tk.StringVar(master=win, value="calculando projeção...")
-    tk.Label(proj_frame, textvariable=proj_text_var, bg=BG, fg=T_SEC,
-             font=("Segoe UI", 10), wraplength=W - 60, justify="left").pack(
-                 side="left", padx=(8, 0))
+    proj_text_label = tk.Label(proj_frame, textvariable=proj_text_var, bg=BG, fg=T_SEC,
+                               font=("Segoe UI", 10), wraplength=W - 60, justify="left")
+    proj_text_label.pack(side="left", padx=(8, 0))
 
     _proj_badge = [None]
 
@@ -523,6 +527,45 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
               font=("Segoe UI", 12),
               activebackground=SURFACE, cursor="hand2",
               padx=20, pady=6).pack()
+
+    # ── Responsive font scaling ───────────────────────────────────────────
+    import tkinter.font as tkfont
+    _font_refs = []   # (widget, family, base_size, weight)
+
+    def _collect_labels(parent):
+        for child in parent.winfo_children():
+            if isinstance(child, (tk.Label, tk.Button)):
+                try:
+                    f = tkfont.Font(font=child.cget("font"))
+                    sz = abs(f.actual("size"))
+                    if sz > 0:
+                        _font_refs.append((child, f.actual("family"), sz, f.actual("weight")))
+                except Exception:
+                    pass
+            _collect_labels(child)
+
+    win.update_idletasks()
+    _collect_labels(outer)
+
+    _last_scale_w = [W]
+
+    def _scale_fonts(new_w):
+        if abs(new_w - _last_scale_w[0]) < 3:
+            return
+        _last_scale_w[0] = new_w
+        scale = max(0.65, min(1.0, new_w / W))
+        for widget, family, base_sz, weight in _font_refs:
+            sz = max(8, round(base_sz * scale))
+            try:
+                widget.config(font=(family, sz, weight))
+            except Exception:
+                pass
+        try:
+            proj_text_label.config(wraplength=max(80, new_w - 80))
+        except Exception:
+            pass
+
+    _scale_hook[0] = _scale_fonts
 
     # ── JSONL watcher ──────────────────────────────────────────────────────
     def _jsonl_snapshot():
