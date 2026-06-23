@@ -673,11 +673,10 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
             result = _draw_chart(chart_cv, _cached_series[0],
                                  _window_sec, eff_pct, now_sec, eff_lim)
 
-            if result and lim:
+            if result and eff_lim:
                 sl, cur_val, r2val, proj_end, _ = result
-                proj_pct = min(proj_end / lim * 100, 999)
-                # t_hit: seconds from now until slope hits limit (anchored to cur_val)
-                remaining_to_lim = lim - cur_val
+                proj_pct = min(proj_end / eff_lim * 100, 999)
+                remaining_to_lim = eff_lim - cur_val
                 t_hit = (now_sec + remaining_to_lim / sl) if sl > 0 and remaining_to_lim > 0 else None
                 _update_proj(proj_pct, r2val, t_hit, _window_sec)
 
