@@ -24,7 +24,7 @@ BADGE_OK   = ("#D1F0DB", "#1A7A3A")
 BADGE_WARN = ("#FDEECE", "#854F0B")
 BADGE_DANG = ("#FDDCDC", "#A32D2D")
 
-W = 420
+W = 340
 
 
 def _parse_dt(s):
@@ -73,7 +73,9 @@ def _wols(xs, ys):
 
 # ── Chart ──────────────────────────────────────────────────────────────────
 def _draw_chart(canvas, series, window_sec, api_pct, now_sec, implied_limit):
-    CW, CH = int(canvas["width"]), int(canvas["height"])
+    canvas.update_idletasks()
+    CW = canvas.winfo_width() or int(canvas["width"]) if canvas["width"] != "" else 300
+    CH = canvas.winfo_height() or int(canvas["height"]) if canvas["height"] != "" else 140
     L, R, T, B = 38, 12, 10, 24
     pw = CW - L - R
     ph = CH - T - B
@@ -175,7 +177,7 @@ def _divider(parent, row):
 
 def _section(parent, row):
     f = tk.Frame(parent, bg=BG)
-    f.grid(row=row, column=0, sticky="ew", padx=20, pady=(14, 14))
+    f.grid(row=row, column=0, sticky="ew", padx=16, pady=(12, 12))
     f.columnconfigure(0, weight=1)
     return f
 
@@ -220,10 +222,12 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     win = tk.Tk()
     win.title("Claude Token Monitor")
     win.configure(bg=BG)
-    win.resizable(False, False)
+    win.resizable(True, True)
+    win.minsize(300, 400)
     win.attributes("-topmost", True)
+    win.geometry(f"{W}x620")
 
-    outer = tk.Frame(win, bg=BG, width=W)
+    outer = tk.Frame(win, bg=BG)
     outer.pack(fill="both", expand=True)
     outer.columnconfigure(0, weight=1)
 
@@ -253,7 +257,7 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
 
     # ── HEADER ─────────────────────────────────────────────────────────────
     hdr = tk.Frame(outer, bg=BG)
-    hdr.grid(row=row, column=0, sticky="ew", padx=20, pady=(18, 14))
+    hdr.grid(row=row, column=0, sticky="ew", padx=16, pady=(14, 10))
     hdr.columnconfigure(0, weight=1)
     row += 1
 
@@ -330,14 +334,14 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     tk.Label(meta, textvariable=cost_var, bg=BG, fg=T_TER,
              font=("Segoe UI", 10), anchor="e").pack(anchor="e")
 
-    bar_w = W - 40
-    bar_canvas = tk.Canvas(sec1, width=bar_w, height=6, bg=SURFACE,
-                           highlightthickness=0, bd=0)
+    bar_canvas = tk.Canvas(sec1, height=6, bg=SURFACE, highlightthickness=0, bd=0)
     bar_canvas.grid(row=2, column=0, sticky="ew")
 
     def _update_bar(p, col):
+        bar_canvas.update_idletasks()
+        bw = bar_canvas.winfo_width() or (W - 40)
         bar_canvas.delete("all")
-        fw = int(bar_w * min(p / 100, 1.0))
+        fw = int(bw * min(p / 100, 1.0))
         if fw > 0:
             bar_canvas.create_rectangle(0, 0, fw, 6, fill=col, outline="")
 
@@ -349,9 +353,7 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
 
     _section_title(sec2, "consumo acumulado", 0)
 
-    chart_w = W - 40
-    chart_cv = tk.Canvas(sec2, width=chart_w, height=140, bg=BG,
-                         highlightthickness=0, bd=0)
+    chart_cv = tk.Canvas(sec2, height=140, bg=BG, highlightthickness=0, bd=0)
     chart_cv.grid(row=1, column=0, sticky="ew")
 
     proj_frame = tk.Frame(sec2, bg=BG)
