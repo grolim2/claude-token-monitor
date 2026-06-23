@@ -121,13 +121,15 @@ def _refresh():
 
 
 def _show_details(icon, item):
-    api_usage   = dict(_last_api_usage)
-    window_info = dict(_last_window_info)
-    local_usage = dict(_last_local_usage)
+    def get_api_usage():
+        return dict(_last_api_usage)
+
+    def get_local_usage():
+        return dict(_last_local_usage)
 
     threading.Thread(
         target=open_details,
-        args=(api_usage, window_info, local_usage, 0.0),
+        args=(get_api_usage, get_local_usage, 0.0),
         daemon=True,
     ).start()
 

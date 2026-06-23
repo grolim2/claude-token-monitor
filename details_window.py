@@ -216,7 +216,7 @@ def _badge_label(parent, text, style="ok"):
 
 
 # ── Main window ────────────────────────────────────────────────────────────
-def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: float):
+def open_details(get_api_usage, get_local_usage, limit_usd: float):
     win = tk.Tk()
     win.title("Claude Token Monitor")
     win.configure(bg=BG)
@@ -227,28 +227,27 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     outer.pack(fill="both", expand=True)
     outer.columnconfigure(0, weight=1)
 
-    five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
+    def _extract(api_usage, local_usage):
+        five_h = api_usage.get("five_hour") if not api_usage.get("error") else None
+        if five_h:
+            pct            = float(five_h.get("utilization", 0))
+            window_end_dt  = _parse_dt(five_h.get("resets_at", ""))
+            window_start_dt= (window_end_dt - timedelta(hours=5)) if window_end_dt else None
+        else:
+            pct             = 0.0
+            window_end_dt   = None
+            window_start_dt = None
 
-    if five_h:
-        pct = float(five_h.get("utilization", 0))
-        window_end_dt   = _parse_dt(five_h.get("resets_at", ""))
-        window_start_dt = (window_end_dt - timedelta(hours=5)) if window_end_dt else None
-        is_active = window_end_dt is not None
-    else:
-        is_active = window_info.get("is_active", False)
-        window_end_dt   = _parse_dt(window_info.get("window_end", "")) if is_active else None
-        window_start_dt = _parse_dt(window_info.get("window_start", "")) if is_active else None
-        pct = 0.0
+        usage = local_usage
+        cost  = usage.get("cost_usd", 0.0)
+        total = (usage.get("input_tokens", 0) + usage.get("output_tokens", 0) +
+                 usage.get("cache_creation_5m", 0) + usage.get("cache_creation_1h", 0) +
+                 usage.get("cache_read_input_tokens", 0))
+        lim   = (total / (pct / 100.0)) if pct > 0 and total > 0 else None
+        return pct, window_end_dt, window_start_dt, cost, total, lim, usage
 
-    cost = usage.get("cost_usd", 0.0)
-    total_tokens = (
-        usage.get("input_tokens", 0) +
-        usage.get("output_tokens", 0) +
-        usage.get("cache_creation_5m", 0) +
-        usage.get("cache_creation_1h", 0) +
-        usage.get("cache_read_input_tokens", 0)
-    )
-    implied_limit = (total_tokens / (pct / 100.0)) if pct > 0 and total_tokens > 0 else None
+    pct, window_end_dt, window_start_dt, cost, total_tokens, implied_limit, usage = \
+        _extract(get_api_usage(), get_local_usage())
 
     row = 0
 
@@ -287,17 +286,26 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     tk.Label(cd_blk, textvariable=countdown_var, bg=BG, fg=T_PRI,
              font=("Segoe UI", 26, "bold"), anchor="w").pack(anchor="w")
 
-    if is_active and window_start_dt and window_end_dt:
-        local_tz = datetime.now().astimezone().tzinfo
-        fmt = "%d/%m %H:%M"
-        s_str = window_start_dt.astimezone(local_tz).strftime(fmt)
-        e_str = window_end_dt.astimezone(local_tz).strftime(fmt)
-        rng_blk = tk.Frame(mid, bg=BG)
-        rng_blk.pack(side="right")
-        tk.Label(rng_blk, text=f"início  {s_str}", bg=BG, fg=T_TER,
-                 font=("Segoe UI", 10), anchor="e").pack(anchor="e")
-        tk.Label(rng_blk, text=f"término {e_str}", bg=BG, fg=T_TER,
-                 font=("Segoe UI", 10), anchor="e").pack(anchor="e")
+    rng_blk = tk.Frame(mid, bg=BG)
+    rng_blk.pack(side="right")
+    range_start_var = tk.StringVar()
+    range_end_var   = tk.StringVar()
+    tk.Label(rng_blk, textvariable=range_start_var, bg=BG, fg=T_TER,
+             font=("Segoe UI", 10), anchor="e").pack(anchor="e")
+    tk.Label(rng_blk, textvariable=range_end_var, bg=BG, fg=T_TER,
+             font=("Segoe UI", 10), anchor="e").pack(anchor="e")
+
+    def _update_range(wstart, wend):
+        if wstart and wend:
+            local_tz = datetime.now().astimezone().tzinfo
+            fmt = "%d/%m %H:%M"
+            range_start_var.set(f"início  {wstart.astimezone(local_tz).strftime(fmt)}")
+            range_end_var.set(  f"término {wend.astimezone(local_tz).strftime(fmt)}")
+        else:
+            range_start_var.set("sem sessão ativa")
+            range_end_var.set("")
+
+    _update_range(window_start_dt, window_end_dt)
 
     # ── CONSUMPTION ────────────────────────────────────────────────────────
     _divider(outer, row); row += 1
@@ -308,26 +316,32 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     num_row = tk.Frame(sec1, bg=BG)
     num_row.grid(row=1, column=0, sticky="ew", pady=(0, 10))
 
-    bar_color = BAR_DANG if pct >= 80 else (BAR_WARN if pct >= 50 else BAR_NRM)
-
-    tk.Label(num_row, text=f"{pct:.0f}%", bg=BG, fg=bar_color,
-             font=("Segoe UI", 36, "bold"), anchor="w").pack(side="left")
+    pct_var   = tk.StringVar(value=f"{pct:.0f}%")
+    pct_label = tk.Label(num_row, textvariable=pct_var, bg=BG, fg=BAR_NRM,
+                         font=("Segoe UI", 36, "bold"), anchor="w")
+    pct_label.pack(side="left")
 
     meta = tk.Frame(num_row, bg=BG)
     meta.pack(side="right", anchor="se")
-    tk.Label(meta, text=f"{total_tokens:,} tokens".replace(",", "."),
-             bg=BG, fg=T_SEC, font=("Segoe UI", 12), anchor="e").pack(anchor="e")
-    tk.Label(meta, text=f"${cost:.4f} USD",
-             bg=BG, fg=T_TER, font=("Segoe UI", 10), anchor="e").pack(anchor="e")
+    tok_var  = tk.StringVar(value=f"{total_tokens:,} tokens".replace(",", "."))
+    cost_var = tk.StringVar(value=f"${cost:.4f} USD")
+    tk.Label(meta, textvariable=tok_var,  bg=BG, fg=T_SEC,
+             font=("Segoe UI", 12), anchor="e").pack(anchor="e")
+    tk.Label(meta, textvariable=cost_var, bg=BG, fg=T_TER,
+             font=("Segoe UI", 10), anchor="e").pack(anchor="e")
 
-    # Progress bar (Canvas)
     bar_w = W - 40
     bar_canvas = tk.Canvas(sec1, width=bar_w, height=6, bg=SURFACE,
                            highlightthickness=0, bd=0)
     bar_canvas.grid(row=2, column=0, sticky="ew")
-    fill_w = int(bar_w * min(pct / 100, 1.0))
-    if fill_w > 0:
-        bar_canvas.create_rectangle(0, 0, fill_w, 6, fill=bar_color, outline="")
+
+    def _update_bar(p, col):
+        bar_canvas.delete("all")
+        fw = int(bar_w * min(p / 100, 1.0))
+        if fw > 0:
+            bar_canvas.create_rectangle(0, 0, fw, 6, fill=col, outline="")
+
+    _update_bar(pct, BAR_DANG if pct >= 80 else (BAR_WARN if pct >= 50 else BAR_NRM))
 
     # ── CHART ──────────────────────────────────────────────────────────────
     _divider(outer, row); row += 1
@@ -412,42 +426,43 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     _cached_series = [get_window_series()]
     _last_snap     = [_jsonl_snapshot()]
     _window_sec    = 5 * 3600
+    # mutable state updated each tick
+    _state = {
+        "pct": pct,
+        "window_end_dt":   window_end_dt,
+        "window_start_dt": window_start_dt,
+        "implied_limit":   implied_limit,
+    }
 
-    def _chart_tick():
+    def _tick():
         if not win.winfo_exists():
             return
         try:
-            snap = _jsonl_snapshot()
-            if snap != _last_snap[0]:
-                _last_snap[0] = snap
-                _cached_series[0] = get_window_series()
+            # ── Refresh API + local data ──────────────────────────────────
+            new_pct, new_wed, new_wsd, new_cost, new_tok, new_lim, new_usage = \
+                _extract(get_api_usage(), get_local_usage())
 
-            now_sec = 0.0
-            if window_start_dt:
-                now_sec = min(
-                    (datetime.now(timezone.utc) - window_start_dt).total_seconds(),
-                    _window_sec)
+            state_changed = (new_pct != _state["pct"] or
+                             new_wed != _state["window_end_dt"])
 
-            series = _cached_series[0]
-            lim = implied_limit
+            _state["pct"]            = new_pct
+            _state["window_end_dt"]  = new_wed
+            _state["window_start_dt"]= new_wsd
+            _state["implied_limit"]  = new_lim
 
-            result = _draw_chart(chart_cv, series, _window_sec, pct, now_sec, lim)
+            if state_changed:
+                bar_col = BAR_DANG if new_pct >= 80 else (BAR_WARN if new_pct >= 50 else BAR_NRM)
+                pct_var.set(f"{new_pct:.0f}%")
+                pct_label.config(fg=bar_col)
+                tok_var.set(f"{new_tok:,} tokens".replace(",", "."))
+                cost_var.set(f"${new_cost:.4f} USD")
+                _update_bar(new_pct, bar_col)
+                _update_range(new_wsd, new_wed)
 
-            if result and lim:
-                sl, ic, r2val, proj_end, _ = result
-                proj_pct = min(proj_end / lim * 100, 999)
-                t_hit = ((lim - ic) / sl) if sl > 0 else None
-                _update_proj(proj_pct, r2val, t_hit, _window_sec)
-        except Exception:
-            pass
-        win.after(1_000, _chart_tick)
-
-    def _countdown_tick():
-        if not win.winfo_exists():
-            return
-        try:
-            if window_end_dt:
-                secs = int((window_end_dt - datetime.now(timezone.utc)).total_seconds())
+            # ── Countdown ─────────────────────────────────────────────────
+            wed = _state["window_end_dt"]
+            if wed:
+                secs = int((wed - datetime.now(timezone.utc)).total_seconds())
                 if secs > 0:
                     h, rem = divmod(secs, 3600)
                     m, s   = divmod(rem, 60)
@@ -456,10 +471,33 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
                     countdown_var.set("Encerrado!")
             else:
                 countdown_var.set("--:--:--")
+
+            # ── JSONL watcher → chart ─────────────────────────────────────
+            snap = _jsonl_snapshot()
+            if snap != _last_snap[0]:
+                _last_snap[0] = snap
+                _cached_series[0] = get_window_series()
+
+            wsd = _state["window_start_dt"]
+            now_sec = 0.0
+            if wsd:
+                now_sec = min(
+                    (datetime.now(timezone.utc) - wsd).total_seconds(),
+                    _window_sec)
+
+            lim    = _state["implied_limit"]
+            result = _draw_chart(chart_cv, _cached_series[0],
+                                 _window_sec, _state["pct"], now_sec, lim)
+
+            if result and lim:
+                sl, ic, r2val, proj_end, _ = result
+                proj_pct = min(proj_end / lim * 100, 999)
+                t_hit    = ((lim - ic) / sl) if sl > 0 else None
+                _update_proj(proj_pct, r2val, t_hit, _window_sec)
+
         except Exception:
             pass
-        win.after(1_000, _countdown_tick)
+        win.after(1_000, _tick)
 
-    win.after(100, _chart_tick)
-    _countdown_tick()
+    win.after(100, _tick)
     win.mainloop()
