@@ -27,10 +27,11 @@ def _is_expired(creds: dict) -> bool:
 
 
 def _refresh_via_cli():
-    """Run a no-op claude prompt to force the CLI to refresh its OAuth token."""
+    """Run a no-op claude prompt to force the CLI to refresh its OAuth token.
+    Uses shell=True so Windows finds claude.cmd/.ps1 in npm PATH."""
     subprocess.run(
-        ["claude", "-p", ".", "--output-format", "json"],
-        capture_output=True, timeout=30, check=False
+        "claude -p . --output-format json",
+        capture_output=True, timeout=30, check=False, shell=True
     )
 
 
