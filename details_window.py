@@ -290,9 +290,15 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float):
     win.attributes("-topmost", True)
     win.geometry(f"{W}x560")
 
-    # Remove window icon (Tkinter way) and apply light title bar
+    # Transparent 16x16 ICO to hide the default Tkinter feather icon
     try:
-        win.iconphoto(False, tk.PhotoImage())
+        from PIL import Image
+        import tempfile, os
+        _ico = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+        _fd, _ico_path = tempfile.mkstemp(suffix=".ico")
+        os.close(_fd)
+        _ico.save(_ico_path, format="ICO")
+        win.iconbitmap(default=_ico_path)
     except Exception:
         pass
     win.after(50, lambda: _apply_light_titlebar(win))
