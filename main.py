@@ -141,22 +141,29 @@ def _show_details(icon, item):
         except Exception:
             _details_win_ref[0] = None
 
+    _live_cbs = {}   # populated by open_details; forwarded to settings when opened from logo
+
     def get_api_usage():
-        # Always return last valid API data; prevents zeros on transient errors
         return dict(_last_valid_api if _last_valid_api else _last_api_usage)
 
     def get_local_usage():
         return dict(_last_local_usage)
 
+    def open_settings_fn():
+        _open_settings_with_cbs(_live_cbs)
+
     threading.Thread(
         target=open_details,
         args=(get_api_usage, get_local_usage, 0.0),
-        kwargs={"win_ref": _details_win_ref},
+        kwargs={"win_ref": _details_win_ref,
+                "open_settings_fn": open_settings_fn,
+                "live_callbacks_ref": _live_cbs},
         daemon=True,
     ).start()
 
 
-def _open_settings(icon, item):
+def _open_settings_with_cbs(live_cbs=None):
+    """Open settings dialog, optionally wiring live callbacks to the details window."""
     def on_save(new_cfg):
         global _config
         _config = new_cfg
@@ -166,10 +173,14 @@ def _open_settings(icon, item):
 
     threading.Thread(
         target=open_settings,
-        args=(_config,),
-        kwargs={"on_save": on_save},
+        args=(dict(_config),),
+        kwargs={"on_save": on_save, "live_callbacks": live_cbs},
         daemon=True,
     ).start()
+
+
+def _open_settings(icon, item):
+    _open_settings_with_cbs()
 
 
 def _quit_app(icon, item):

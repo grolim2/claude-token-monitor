@@ -44,6 +44,26 @@ def _apply_light_titlebar(win):
         pass
 
 
+def _apply_dark_titlebar(win):
+    """Set dark title bar via Windows DWM + Win32."""
+    try:
+        hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 20, ctypes.byref(ctypes.c_int(1)), 4)          # dark mode on
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 35, ctypes.byref(ctypes.c_int(0x001E1C1C)), 4) # caption bg #1C1C1E
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 36, ctypes.byref(ctypes.c_int(0x00F7F2F2)), 4) # caption text #F2F2F7
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
+        ctypes.windll.user32.SetWindowLongW(hwnd, -20, style | 0x00000001)
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 1, 0)
+        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 0, 0)
+        ctypes.windll.user32.SetWindowPos(
+            hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0020)
+    except Exception:
+        pass
+
+
 def _make_slim_scrollbar(parent, canvas):
     """Thin 6px ttk scrollbar without arrows, matching the light palette."""
     style = ttk.Style()
@@ -88,6 +108,41 @@ BADGE_WARN = ("#FDEECE", "#854F0B")
 BADGE_DANG = ("#FDDCDC", "#A32D2D")
 
 W = 340
+
+# ── Theme swap maps ──────────────────────────────────────────────────────────
+_L2D = {  # light hex → dark hex
+    "#ffffff": "#1c1c1e", "#f5f5f7": "#2c2c2e", "#d2d2d7": "#48484a",
+    "#1d1d1f": "#f2f2f7", "#6e6e73": "#ababaf", "#aeaeb2": "#58585e",
+}
+_D2L = {v: k for k, v in _L2D.items()}
+
+
+def _set_palette(is_dark: bool):
+    """Update module-level palette; call BEFORE creating widgets."""
+    global BG, SURFACE, BORDER, T_PRI, T_SEC, T_TER
+    global BAR_NRM, C_LINE, C_PROJ, C_NOW
+    if is_dark:
+        BG = "#1C1C1E"; SURFACE = "#2C2C2E"; BORDER = "#48484A"
+        T_PRI = "#F2F2F7"; T_SEC = "#ABABAF"; T_TER = "#58585E"
+        BAR_NRM = "#F2F2F7"; C_LINE = "#F2F2F7"; C_PROJ = "#58585E"; C_NOW = "#58585E"
+    else:
+        BG = "#FFFFFF"; SURFACE = "#F5F5F7"; BORDER = "#D2D2D7"
+        T_PRI = "#1D1D1F"; T_SEC = "#6E6E73"; T_TER = "#AEAEB2"
+        BAR_NRM = "#1D1D1F"; C_LINE = "#1D1D1F"; C_PROJ = "#AEAEB2"; C_NOW = "#AEAEB2"
+
+
+def _walk_theme(root, color_map):
+    """Recursively remap bg/fg on all widgets."""
+    for child in root.winfo_children():
+        for opt in ("bg", "fg", "background", "foreground",
+                    "activebackground", "activeforeground", "selectcolor"):
+            try:
+                cur = child.cget(opt).lower()
+                if cur in color_map:
+                    child.config(**{opt: color_map[cur]})
+            except Exception:
+                pass
+        _walk_theme(child, color_map)
 
 
 def _parse_dt(s):
@@ -288,7 +343,13 @@ def _badge_label(parent, text, style="ok"):
 
 
 # ── Main window ────────────────────────────────────────────────────────────
-def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None):
+def open_details(get_api_usage, get_local_usage, limit_usd: float,
+                 win_ref=None, open_settings_fn=None, live_callbacks_ref=None):
+    from settings_dialog import load_config
+    cfg = load_config()
+    _is_dark = cfg.get("dark_mode", False)
+    _set_palette(_is_dark)   # must precede all widget creation
+
     win = tk.Tk()
     win.title("")
     win.configure(bg=BG)
@@ -310,7 +371,12 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
         pass
     if win_ref is not None:
         win_ref[0] = win
-    win.after(50, lambda: _apply_light_titlebar(win))
+    _titlebar_fn = _apply_dark_titlebar if _is_dark else _apply_light_titlebar
+    win.after(50, lambda: _titlebar_fn(win))
+
+    # Apply persisted window settings
+    win.attributes("-alpha", cfg.get("opacity", 100) / 100)
+    win.attributes("-topmost", cfg.get("always_on_top", False))
 
     # ── Scrollable container ───────────────────────────────────────────────
     _scroll_cv = tk.Canvas(win, bg=BG, highlightthickness=0, bd=0)
@@ -375,11 +441,26 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
     top = tk.Frame(hdr, bg=BG)
     top.pack(fill="x", anchor="w")
 
-    logo = tk.Frame(top, bg=T_PRI, width=32, height=32)
+    _logo_bg    = T_PRI
+    _logo_fg    = BG
+    _logo_hover = "#3D3D3F" if not _is_dark else "#D8D8DD"
+    logo = tk.Frame(top, bg=_logo_bg, width=32, height=32,
+                    cursor="hand2" if open_settings_fn else "")
     logo.pack(side="left")
     logo.pack_propagate(False)
-    tk.Label(logo, text="C", bg=T_PRI, fg="white",
-             font=("Segoe UI", 15, "bold")).place(relx=0.5, rely=0.5, anchor="center")
+    logo_lbl = tk.Label(logo, text="C", bg=_logo_bg, fg=_logo_fg,
+                        font=("Segoe UI", 15, "bold"),
+                        cursor="hand2" if open_settings_fn else "")
+    logo_lbl.place(relx=0.5, rely=0.5, anchor="center")
+    if open_settings_fn:
+        def _logo_enter(e):
+            logo.config(bg=_logo_hover); logo_lbl.config(bg=_logo_hover)
+        def _logo_leave(e):
+            logo.config(bg=_logo_bg); logo_lbl.config(bg=_logo_bg)
+        for _w in (logo, logo_lbl):
+            _w.bind("<Enter>", _logo_enter)
+            _w.bind("<Leave>", _logo_leave)
+            _w.bind("<Button-1>", lambda e: open_settings_fn())
 
     title_blk = tk.Frame(top, bg=BG)
     title_blk.pack(side="left", padx=(10, 0))
@@ -414,11 +495,11 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
     def _update_range(wstart, wend):
         if wstart and wend:
             local_tz = datetime.now().astimezone().tzinfo
-            fmt = "%d/%m %H:%M"
-            range_start_var.set(f"início  {wstart.astimezone(local_tz).strftime(fmt)}")
-            range_end_var.set(  f"término {wend.astimezone(local_tz).strftime(fmt)}")
+            fmt = "%d/%m  %H:%M"
+            range_start_var.set(f"início\n{wstart.astimezone(local_tz).strftime(fmt)}")
+            range_end_var.set(  f"término\n{wend.astimezone(local_tz).strftime(fmt)}")
         else:
-            range_start_var.set("sem sessão ativa")
+            range_start_var.set("sem sessão\nativa")
             range_end_var.set("")
 
     _update_range(window_start_dt, window_end_dt)
@@ -562,13 +643,6 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
                 widget.config(font=(family, sz, weight))
             except Exception:
                 pass
-        # Range labels: right-side of header; give them half the usable width
-        rng_wrap = max(70, new_w // 2 - 30)
-        for lbl in (range_start_lbl, range_end_lbl):
-            try:
-                lbl.config(wraplength=rng_wrap)
-            except Exception:
-                pass
         # Projection text: usable = total - section padding(32) - badge(~68) - gap(8)
         try:
             proj_text_label.config(wraplength=max(60, new_w - 108))
@@ -576,6 +650,27 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float, win_ref=None)
             pass
 
     _scale_hook[0] = _scale_fonts
+
+    # ── Live settings callbacks ────────────────────────────────────────────
+    if live_callbacks_ref is not None:
+        def _live_opacity(val):
+            win.after(0, lambda: win.attributes("-alpha", val / 100))
+
+        def _live_topmost(val):
+            win.after(0, lambda: win.attributes("-topmost", bool(val)))
+
+        def _live_theme(is_dark):
+            def _do():
+                color_map = _L2D if is_dark else _D2L
+                _set_palette(is_dark)
+                win.configure(bg=BG)
+                _walk_theme(win, color_map)
+                (_apply_dark_titlebar if is_dark else _apply_light_titlebar)(win)
+            win.after(0, _do)
+
+        live_callbacks_ref["opacity"] = _live_opacity
+        live_callbacks_ref["topmost"] = _live_topmost
+        live_callbacks_ref["theme"]   = _live_theme
 
     # ── JSONL watcher ──────────────────────────────────────────────────────
     def _jsonl_snapshot():
