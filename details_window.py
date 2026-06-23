@@ -162,16 +162,22 @@ def _draw_chart(canvas, series, window_sec, api_pct, now_sec):
                        tx(window_sec) + 3, ty(max(0, proj_end)) + 3,
                        fill="#e07b00", outline="")
 
-    # ── Actual cumulative line ───────────────────────────────────────────
+    # ── Actual cumulative line (extended horizontally to now) ───────────────
+    # Extend the series to now_sec so the line reaches the present
+    display_series = list(series)
+    if now_sec > xs[-1]:
+        display_series.append((now_sec, ys[-1]))
+
     pts = []
-    for t, v in series:
+    for t, v in display_series:
         pts += [tx(t), ty(v)]
     if len(pts) >= 4:
         canvas.create_line(*pts, fill="#1565C0", width=2)
 
-    # Actual endpoint dot
-    canvas.create_oval(tx(xs[-1]) - 4, ty(ys[-1]) - 4,
-                       tx(xs[-1]) + 4, ty(ys[-1]) + 4,
+    # Actual endpoint dot at now
+    dot_x = tx(now_sec)
+    dot_y = ty(ys[-1])
+    canvas.create_oval(dot_x - 4, dot_y - 4, dot_x + 4, dot_y + 4,
                        fill="#1565C0", outline="white", width=1)
 
     # ── "Now" vertical line ──────────────────────────────────────────────
@@ -181,24 +187,25 @@ def _draw_chart(canvas, series, window_sec, api_pct, now_sec):
     canvas.create_text(xnow + 2, PAD["t"] + 2, text="agora",
                        anchor="nw", font=("Segoe UI", 7), fill="#555")
 
-    # ── Projection annotation ────────────────────────────────────────────
+    # ── Projection annotation (in %) ─────────────────────────────────────
     if implied_limit and implied_limit > 0:
-        # Time when projection hits the limit
+        proj_pct = min(proj_end / implied_limit * 100, 999)
+        remaining_pct = max(0.0, 100 - proj_pct)
+
         if slope > 0:
             t_hit = (implied_limit - intercept) / slope
         else:
             t_hit = float("inf")
 
-        remaining_sec = window_sec - now_sec
         if t_hit <= window_sec:
-            mins_before_end = (window_sec - t_hit) / 60
-            msg = f"⚠ Projeção atinge limite {fmt_hm(window_sec - t_hit)} antes do fim (R²={r2:.2f})"
+            msg = f"⚠ Limite atingido {fmt_hm(window_sec - t_hit)} antes do fim  (R²={r2:.2f})"
             col = "#c0392b"
         else:
-            msg = f"✓ Projeção: {fmt_tok(int(proj_end))} ao fim  (R²={r2:.2f})"
+            msg = f"✓ Projeção ao fim: {proj_pct:.0f}% usado, {remaining_pct:.0f}% restante  (R²={r2:.2f})"
             col = "#27ae60"
     else:
-        msg = f"Projeção ao fim: {fmt_tok(int(proj_end))}  (R²={r2:.2f})"
+        proj_pct = 0
+        msg = f"Projeção ao fim: {fmt_tok(int(proj_end))} tokens  (R²={r2:.2f})"
         col = "#555"
 
     canvas.create_text(PAD["l"] + cw // 2, PAD["t"] - 2, text=msg,
