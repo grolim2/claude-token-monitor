@@ -339,43 +339,47 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     _cached_series = [get_window_series()]
     _last_snapshot = [_jsonl_snapshot()]
 
-    def _tick():
+    def _chart_tick():
         """Every second: check for JSONL changes, reload series if needed, redraw."""
         if not win.winfo_exists():
             return
+        try:
+            snap = _jsonl_snapshot()
+            if snap != _last_snapshot[0]:
+                _last_snapshot[0] = snap
+                _cached_series[0] = get_window_series()
 
-        snap = _jsonl_snapshot()
-        if snap != _last_snapshot[0]:
-            _last_snapshot[0] = snap
-            _cached_series[0] = get_window_series()
-
-        window_sec = 5 * 3600
-        now_sec = 0.0
-        if window_start_dt:
-            now_sec = min(
-                (datetime.now(timezone.utc) - window_start_dt).total_seconds(),
-                window_sec
-            )
-        _draw_chart(chart_canvas, _cached_series[0], window_sec, pct, now_sec)
-        win.after(1_000, _tick)
-
-    win.after(100, _tick)
+            window_sec = 5 * 3600
+            now_sec = 0.0
+            if window_start_dt:
+                now_sec = min(
+                    (datetime.now(timezone.utc) - window_start_dt).total_seconds(),
+                    window_sec
+                )
+            _draw_chart(chart_canvas, _cached_series[0], window_sec, pct, now_sec)
+        except Exception:
+            pass
+        win.after(1_000, _chart_tick)
 
     # ── Countdown tick (every second) ─────────────────────────────────
-    def _tick():
+    def _countdown_tick():
         if not win.winfo_exists():
             return
-        if window_end_dt:
-            secs = int((window_end_dt - datetime.now(timezone.utc)).total_seconds())
-            if secs > 0:
-                h, r = divmod(secs, 3600)
-                m, s = divmod(r, 60)
-                countdown_var.set(f"{h:02d}:{m:02d}:{s:02d}")
+        try:
+            if window_end_dt:
+                secs = int((window_end_dt - datetime.now(timezone.utc)).total_seconds())
+                if secs > 0:
+                    h, r = divmod(secs, 3600)
+                    m, s = divmod(r, 60)
+                    countdown_var.set(f"{h:02d}:{m:02d}:{s:02d}")
+                else:
+                    countdown_var.set("Encerrado!")
             else:
-                countdown_var.set("Encerrado!")
-        else:
-            countdown_var.set("--:--:--")
-        win.after(1000, _tick)
+                countdown_var.set("--:--:--")
+        except Exception:
+            pass
+        win.after(1000, _countdown_tick)
 
-    _tick()
+    win.after(100, _chart_tick)
+    _countdown_tick()
     win.mainloop()
