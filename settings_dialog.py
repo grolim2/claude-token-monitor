@@ -106,19 +106,24 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
 
     # ── Atualização ─────────────────────────────────────────────────────────
     _sec("Atualização", 0)
+    tk.Label(frame,
+             text="Frequência de atualização da informação de consumo.",
+             bg="#FFFFFF", fg="#6E6E73", font=("Segoe UI", 10),
+             wraplength=260, justify="left").grid(
+        row=1, column=0, columnspan=2, sticky="w", pady=(0, 6))
     tk.Label(frame, text="Intervalo (segundos):", bg="#FFFFFF", fg="#1D1D1F",
-             font=("Segoe UI", 11)).grid(row=1, column=0, sticky="w", pady=4)
+             font=("Segoe UI", 11)).grid(row=2, column=0, sticky="w", pady=4)
     refresh_var = tk.StringVar(value=str(current_config.get("refresh_seconds", 60)))
     tk.Entry(frame, textvariable=refresh_var, width=8, font=("Segoe UI", 11),
              relief="flat", highlightthickness=1,
              highlightbackground="#D2D2D7").grid(
-        row=1, column=1, padx=(8, 0), sticky="w")
-    tk.Label(frame, text="mínimo 10 s", bg="#FFFFFF", fg="#AEAEB2",
-             font=("Segoe UI", 9)).grid(row=2, column=0, columnspan=2, sticky="w")
+        row=2, column=1, padx=(8, 0), sticky="w")
+    tk.Label(frame, text="mínimo 20 s", bg="#FFFFFF", fg="#AEAEB2",
+             font=("Segoe UI", 9)).grid(row=3, column=0, columnspan=2, sticky="w")
 
     # ── Aparência ────────────────────────────────────────────────────────────
-    _div(3)
-    _sec("Aparência", 4)
+    _div(4)
+    _sec("Aparência", 5)
 
     dark_var = tk.BooleanVar(value=current_config.get("dark_mode", False))
 
@@ -130,7 +135,7 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
                    bg="#FFFFFF", fg="#1D1D1F", font=("Segoe UI", 11),
                    activebackground="#FFFFFF", relief="flat",
                    command=_on_dark).grid(
-        row=5, column=0, columnspan=2, sticky="w", pady=2)
+        row=6, column=0, columnspan=2, sticky="w", pady=2)
 
     topmost_var = tk.BooleanVar(value=current_config.get("always_on_top", False))
 
@@ -142,17 +147,17 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
                    variable=topmost_var, bg="#FFFFFF", fg="#1D1D1F",
                    font=("Segoe UI", 11), activebackground="#FFFFFF",
                    relief="flat", command=_on_topmost).grid(
-        row=6, column=0, columnspan=2, sticky="w", pady=2)
+        row=7, column=0, columnspan=2, sticky="w", pady=2)
 
     # Opacity
     tk.Label(frame, text="Opacidade:", bg="#FFFFFF", fg="#1D1D1F",
-             font=("Segoe UI", 11)).grid(row=7, column=0, sticky="w", pady=(12, 0))
+             font=("Segoe UI", 11)).grid(row=8, column=0, sticky="w", pady=(12, 0))
 
     opacity_var = tk.IntVar(value=current_config.get("opacity", 100))
     opacity_lbl = tk.Label(frame, text=f"{opacity_var.get()}%",
                            bg="#FFFFFF", fg="#6E6E73",
                            font=("Segoe UI", 11), width=5, anchor="e")
-    opacity_lbl.grid(row=7, column=1, sticky="e", pady=(12, 0))
+    opacity_lbl.grid(row=8, column=1, sticky="e", pady=(12, 0))
 
     def _on_opacity(val):
         v = int(float(val))
@@ -162,17 +167,17 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
 
     _Slider(frame, from_=15, to=100, variable=opacity_var,
             command=_on_opacity).grid(
-        row=8, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        row=9, column=0, columnspan=2, sticky="ew", pady=(4, 0))
 
     # ── Buttons ──────────────────────────────────────────────────────────────
-    _div(9)
+    _div(10)
     btn_frame = tk.Frame(frame, bg="#FFFFFF")
-    btn_frame.grid(row=10, column=0, columnspan=2, pady=(10, 0), sticky="e")
+    btn_frame.grid(row=11, column=0, columnspan=2, pady=(10, 0), sticky="e")
 
     def on_ok():
         try:
             new_cfg = {
-                "refresh_seconds": max(10, int(refresh_var.get())),
+                "refresh_seconds": max(20, int(refresh_var.get())),
                 "dark_mode":       dark_var.get(),
                 "always_on_top":   topmost_var.get(),
                 "opacity":         opacity_var.get(),
