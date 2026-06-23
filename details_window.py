@@ -324,8 +324,11 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     ttk.Button(frame, text="Fechar", command=win.destroy).grid(
         row=18, column=0, columnspan=2, pady=(10, 0))
 
-    # ── Draw chart (once, after window is rendered) ────────────────────
-    def _draw():
+    CHART_REFRESH_MS = 60_000  # redraw every 60s to match API poll
+
+    def _refresh_chart():
+        if not win.winfo_exists():
+            return
         series = get_window_series()
         window_sec = 5 * 3600
         now_sec = 0.0
@@ -335,8 +338,9 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
                 window_sec
             )
         _draw_chart(chart_canvas, series, window_sec, pct, now_sec)
+        win.after(CHART_REFRESH_MS, _refresh_chart)
 
-    win.after(100, _draw)
+    win.after(100, _refresh_chart)
 
     # ── Countdown tick (every second) ─────────────────────────────────
     def _tick():
