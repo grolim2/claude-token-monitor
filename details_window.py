@@ -324,12 +324,19 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
     ttk.Button(frame, text="Fechar", command=win.destroy).grid(
         row=18, column=0, columnspan=2, pady=(10, 0))
 
-    CHART_REFRESH_MS = 60_000  # redraw every 60s to match API poll
+    _cached_series = [get_window_series()]  # list so closure can mutate
 
-    def _refresh_chart():
+    def _reload_series():
+        """Re-read JSONL every 60s (data only changes on new API calls)."""
         if not win.winfo_exists():
             return
-        series = get_window_series()
+        _cached_series[0] = get_window_series()
+        win.after(60_000, _reload_series)
+
+    def _redraw():
+        """Redraw chart every second — moves 'now' line and updates projection."""
+        if not win.winfo_exists():
+            return
         window_sec = 5 * 3600
         now_sec = 0.0
         if window_start_dt:
@@ -337,10 +344,11 @@ def open_details(api_usage: dict, window_info: dict, usage: dict, limit_usd: flo
                 (datetime.now(timezone.utc) - window_start_dt).total_seconds(),
                 window_sec
             )
-        _draw_chart(chart_canvas, series, window_sec, pct, now_sec)
-        win.after(CHART_REFRESH_MS, _refresh_chart)
+        _draw_chart(chart_canvas, _cached_series[0], window_sec, pct, now_sec)
+        win.after(1_000, _redraw)
 
-    win.after(100, _refresh_chart)
+    win.after(100, _redraw)
+    win.after(60_000, _reload_series)
 
     # ── Countdown tick (every second) ─────────────────────────────────
     def _tick():
