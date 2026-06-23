@@ -376,7 +376,18 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float,
 
     # Apply persisted window settings
     win.attributes("-alpha", cfg.get("opacity", 100) / 100)
-    win.attributes("-topmost", cfg.get("always_on_top", False))
+    _topmost_init = cfg.get("always_on_top", False)
+    win.attributes("-topmost", _topmost_init)
+    if _topmost_init:
+        def _force_topmost():
+            try:
+                hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0,
+                    0x0001 | 0x0002 | 0x0010)
+            except Exception:
+                pass
+        win.after(100, _force_topmost)
 
     # ── Scrollable container ───────────────────────────────────────────────
     _scroll_cv = tk.Canvas(win, bg=BG, highlightthickness=0, bd=0)
@@ -657,7 +668,20 @@ def open_details(get_api_usage, get_local_usage, limit_usd: float,
             win.after(0, lambda: win.attributes("-alpha", val / 100))
 
         def _live_topmost(val):
-            win.after(0, lambda: win.attributes("-topmost", bool(val)))
+            def _do():
+                win.attributes("-topmost", bool(val))
+                # Force via Win32 SetWindowPos for reliability
+                try:
+                    hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+                    hinsert = ctypes.c_void_p(-1 if val else -2)  # TOPMOST / NOTOPMOST
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd, hinsert, 0, 0, 0, 0,
+                        0x0001 | 0x0002 | 0x0010)  # NOSIZE | NOMOVE | NOACTIVATE
+                except Exception:
+                    pass
+                if val:
+                    win.lift()
+            win.after(0, _do)
 
         def _live_theme(is_dark):
             def _do():

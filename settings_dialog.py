@@ -1,5 +1,4 @@
 import tkinter as tk
-from tkinter import ttk
 import json
 from pathlib import Path
 
@@ -24,6 +23,65 @@ def load_config() -> dict:
 
 def save_config(cfg: dict):
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+
+
+class _Slider(tk.Canvas):
+    """Custom slider: thin track line + circle thumb."""
+    _R  = 11   # thumb radius
+    _TH = 2    # track thickness
+
+    def __init__(self, parent, from_, to, variable, command=None,
+                 bg="#FFFFFF", **kw):
+        super().__init__(parent, height=self._R * 2 + 6,
+                         highlightthickness=0, bg=bg, cursor="hand2", **kw)
+        self._from = from_
+        self._to   = to
+        self._var  = variable
+        self._cmd  = command
+        self._PAD  = self._R + 4   # keeps thumb inside canvas
+
+        self.bind("<Configure>", lambda e: self._draw())
+        self.bind("<Button-1>",  self._move)
+        self.bind("<B1-Motion>", self._move)
+
+    # ── internals ──────────────────────────────────────────────────────────
+    def _frac(self):
+        v = max(self._from, min(self._to, self._var.get()))
+        return (v - self._from) / (self._to - self._from)
+
+    def _draw(self):
+        self.delete("all")
+        W = self.winfo_width()
+        H = self.winfo_height()
+        if W < 4:
+            return
+        cy  = H // 2
+        cx  = self._PAD + self._frac() * (W - 2 * self._PAD)
+
+        # Grey full track
+        self.create_line(self._PAD, cy, W - self._PAD, cy,
+                         fill="#D2D2D7", width=self._TH, capstyle="round")
+        # Filled portion
+        if cx > self._PAD + 1:
+            self.create_line(self._PAD, cy, cx, cy,
+                             fill="#1D1D1F", width=self._TH, capstyle="round")
+
+        r = self._R
+        # Subtle shadow
+        self.create_oval(cx - r + 1, cy - r + 1, cx + r + 1, cy + r + 1,
+                         fill="#C8C8CC", outline="")
+        # Thumb: white fill, dark border
+        self.create_oval(cx - r, cy - r, cx + r, cy + r,
+                         fill="#FFFFFF", outline="#1D1D1F", width=1.5)
+
+    def _move(self, e):
+        W = self.winfo_width()
+        f = max(0.0, min(1.0, (e.x - self._PAD) / (W - 2 * self._PAD)))
+        val = round(self._from + f * (self._to - self._from))
+        self._var.set(val)
+        self._draw()
+        if self._cmd:
+            self._cmd(str(val))
 
 
 def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
@@ -53,7 +111,8 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
     refresh_var = tk.StringVar(value=str(current_config.get("refresh_seconds", 60)))
     tk.Entry(frame, textvariable=refresh_var, width=8, font=("Segoe UI", 11),
              relief="flat", highlightthickness=1,
-             highlightbackground="#D2D2D7").grid(row=1, column=1, padx=(8, 0), sticky="w")
+             highlightbackground="#D2D2D7").grid(
+        row=1, column=1, padx=(8, 0), sticky="w")
     tk.Label(frame, text="mínimo 10 s", bg="#FFFFFF", fg="#AEAEB2",
              font=("Segoe UI", 9)).grid(row=2, column=0, columnspan=2, sticky="w")
 
@@ -80,21 +139,20 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
             live_callbacks["topmost"](topmost_var.get())
 
     tk.Checkbutton(frame, text="Sempre visível (sobre outras janelas)",
-                   variable=topmost_var,
-                   bg="#FFFFFF", fg="#1D1D1F", font=("Segoe UI", 11),
-                   activebackground="#FFFFFF", relief="flat",
-                   command=_on_topmost).grid(
+                   variable=topmost_var, bg="#FFFFFF", fg="#1D1D1F",
+                   font=("Segoe UI", 11), activebackground="#FFFFFF",
+                   relief="flat", command=_on_topmost).grid(
         row=6, column=0, columnspan=2, sticky="w", pady=2)
 
     # Opacity
     tk.Label(frame, text="Opacidade:", bg="#FFFFFF", fg="#1D1D1F",
-             font=("Segoe UI", 11)).grid(row=7, column=0, sticky="w", pady=(10, 0))
+             font=("Segoe UI", 11)).grid(row=7, column=0, sticky="w", pady=(12, 0))
 
     opacity_var = tk.IntVar(value=current_config.get("opacity", 100))
     opacity_lbl = tk.Label(frame, text=f"{opacity_var.get()}%",
                            bg="#FFFFFF", fg="#6E6E73",
                            font=("Segoe UI", 11), width=5, anchor="e")
-    opacity_lbl.grid(row=7, column=1, sticky="e", pady=(10, 0))
+    opacity_lbl.grid(row=7, column=1, sticky="e", pady=(12, 0))
 
     def _on_opacity(val):
         v = int(float(val))
@@ -102,20 +160,14 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
         if live_callbacks and "opacity" in live_callbacks:
             live_callbacks["opacity"](v)
 
-    tk.Scale(frame, from_=15, to=100, orient="horizontal",
-             variable=opacity_var, command=_on_opacity,
-             showvalue=False, bg="#FFFFFF", fg="#1D1D1F",
-             troughcolor="#D2D2D7", highlightthickness=0,
-             length=220, sliderlength=14, width=8).grid(
-        row=8, column=0, columnspan=2, sticky="ew", pady=(2, 0))
+    _Slider(frame, from_=15, to=100, variable=opacity_var,
+            command=_on_opacity).grid(
+        row=8, column=0, columnspan=2, sticky="ew", pady=(4, 0))
 
     # ── Buttons ──────────────────────────────────────────────────────────────
     _div(9)
     btn_frame = tk.Frame(frame, bg="#FFFFFF")
     btn_frame.grid(row=10, column=0, columnspan=2, pady=(10, 0), sticky="e")
-
-    def _saved_config():
-        return load_config()
 
     def on_ok():
         try:
@@ -133,25 +185,25 @@ def open_settings(current_config: dict, on_save=None, live_callbacks=None, **_):
         root.destroy()
 
     def on_cancel():
-        # Revert live changes to last saved state
-        saved = _saved_config()
+        saved = load_config()
         if live_callbacks:
-            if "opacity" in live_callbacks:
-                live_callbacks["opacity"](saved.get("opacity", 100))
-            if "topmost" in live_callbacks:
-                live_callbacks["topmost"](saved.get("always_on_top", False))
-            if "theme" in live_callbacks:
-                live_callbacks["theme"](saved.get("dark_mode", False))
+            for key, cfg_key, default in [
+                ("opacity",  "opacity",      100),
+                ("topmost",  "always_on_top", False),
+                ("theme",    "dark_mode",     False),
+            ]:
+                if key in live_callbacks:
+                    live_callbacks[key](saved.get(cfg_key, default))
         root.destroy()
 
     tk.Button(btn_frame, text="Salvar", command=on_ok,
               bg="#1D1D1F", fg="white", font=("Segoe UI", 11),
-              relief="flat", padx=16, pady=6,
-              cursor="hand2", activebackground="#3D3D3F",
+              relief="flat", padx=16, pady=6, cursor="hand2",
+              activebackground="#3D3D3F",
               activeforeground="white").pack(side="right", padx=(6, 0))
     tk.Button(btn_frame, text="Cancelar", command=on_cancel,
               bg="#F5F5F7", fg="#1D1D1F", font=("Segoe UI", 11),
-              relief="flat", padx=16, pady=6,
-              cursor="hand2", activebackground="#E5E5EA").pack(side="right")
+              relief="flat", padx=16, pady=6, cursor="hand2",
+              activebackground="#E5E5EA").pack(side="right")
 
     root.mainloop()
